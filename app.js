@@ -177,47 +177,46 @@ const liveApi=(path,body)=>fetch(`http://${LIVE.host}${path}`+(body?'':`?k=${enc
 let liveRun=null,liveLine=null;
 function liveStatus(t){$('liveStatus').textContent=t||'';$('liveStatus').hidden=!t;}
 async function liveRound(node,raw){
- const run={node,sent:performance.now()};liveRun=run;
+ // 规则同 Magnus（docs/互动剧实时生成规则-v0.1.md）：导演判定几乎等于某个预设选项时走预设分支；
+ // 否则两段同时生成，都生成好、缓冲好再一次性连续播完，播完按导演选定的分支直接进下一场，不回到按钮。
+ const run={node,raw,sent:performance.now()};liveRun=run;
  sayLine=EN?{en:raw,k:'her'}:{zh:raw,k:'her'};
  const secs=()=>Math.round((performance.now()-run.sent)/1000);
- const timer=setInterval(()=>{if(liveRun!==run||run.playing)return clearInterval(timer);liveStatus(T(`咪正在准备回应… ${secs()} 秒`,`Mii is getting ready… ${secs()}s`));},500);
+ const timer=setInterval(()=>{if(liveRun!==run||run.playing)return clearInterval(timer);const n=(run.r?.segs||[]).filter(s=>s.status==='ready').length;
+  liveStatus(run.r?.segs?T(`两段同时生成中 · 已完成 ${n}/2 · ${secs()} 秒`,`Generating both parts · ${n}/2 done · ${secs()}s`):T(`咪在想怎么回应… ${secs()} 秒`,`Mii is thinking… ${secs()}s`));},500);
  try{
   run.id=(await liveApi('/api/round',{input:raw,mode:LIVE.mode,shot:active?.dataset.shot,choice:node.choice,episode:ep,options:node.options,lang})).id;
   while(liveRun===run){
-   run.r=await liveApi('/api/round/'+run.id);const s1=run.r.segs?.[0];
-   if(s1?.status==='error'||run.r.status==='error'&&s1?.status!=='ready')throw Error(s1?.err||run.r.err||'生成失败');
-   if(s1?.status==='ready'&&mode==='choosing'&&current()===node){clearInterval(timer);return livePlay(run);}
+   run.r=await liveApi('/api/round/'+run.id);const segs=run.r.segs||[];
+   if(run.r.status==='preset'){clearInterval(timer);liveRun=null;liveStatus(T('按预设剧情继续','Continuing with that choice'));setTimeout(()=>{liveStatus('');choose(node,run.r.preset);},900);return;}
+   if(segs.some(s=>s.status==='error')||run.r.status==='error')throw Error(segs.map(s=>s.err).filter(Boolean)[0]||run.r.err||'生成失败');
+   if(segs.length&&segs.every(s=>s.status==='ready')&&mode==='choosing'&&current()===node){clearInterval(timer);return livePlay(run);}
    await sleep(1000);
   }
- }catch(err){clearInterval(timer);if(liveRun!==run)return;liveRun=null;console.warn('[mii] live failed',err);liveStatus(T('这一轮没生成出来：','This round failed: ')+err.message);$('sayBtn').disabled=false;}
+ }catch(err){clearInterval(timer);if(liveRun!==run)return;liveRun=null;console.warn('[mii] live failed',err);liveStatus(T('这一轮没生成出来，可以再说一次或点选项：','This round failed. Try again or pick one: ')+err.message);$('sayBtn').disabled=false;}
 }
 async function livePlay(run){
- run.playing=true;liveStatus('');stopWaiting();active?.pause();setMode('live');
- const view={},voice=new Audio(),orig=active;
- const vids=[0,1].map(()=>{const v=document.createElement('video');v.playsInline=true;v.setAttribute('playsinline','');v.preload='auto';$('films').append(v);return v;});
- const poll=setInterval(async()=>{try{run.r=await liveApi('/api/round/'+run.id);const s2=run.r.segs?.[1];if(s2?.status==='ready'&&!vids[1].getAttribute('src')){vids[1].src=s2.url;vids[1].load();}if(run.r.status!=='generating')clearInterval(poll);}catch{}},1000);
- const show=v=>{for(const o of $('films').querySelectorAll('video'))o.classList.toggle('active',o===v);v.play().catch(()=>{});};
+ const node=run.node,view={},voice=new Audio(),orig=active;
+ const vids=run.r.segs.map(sg=>{const v=document.createElement('video');v.playsInline=true;v.setAttribute('playsinline','');v.preload='auto';v.src=sg.url;$('films').append(v);return v;});
+ const ready=v=>new Promise(ok=>{if(v.readyState>=4)ok();else{v.addEventListener('canplaythrough',ok,{once:true});v.addEventListener('error',ok,{once:true});setTimeout(ok,15000);}});
+ liveStatus(T('马上开始…','Starting…'));await Promise.all(vids.map(ready));if(liveRun!==run){vids.forEach(v=>v.remove());return;}
+ run.playing=true;liveStatus('');stopWaiting();orig?.pause();setMode('live');
+ const show=v=>{for(const o of $('films').querySelectorAll('video'))o.classList.toggle('active',o===v);return v.play().catch(()=>{});};
  const ended=v=>new Promise(ok=>{v.onended=ok;v.onerror=ok;});
- const ready=v=>new Promise(ok=>{if(v.readyState>=3)ok();else{v.addEventListener('canplay',ok,{once:true});v.addEventListener('error',ok,{once:true});}});
  // 咪的台词：A 声线逐句播，字幕跟着；配音还没好就只显示字幕
  const speak=async(seg,delay)=>{await sleep(delay);for(const l of (run.r.lines||[]).filter(x=>x.seg===seg)){if(liveRun!==run)return;
-  const line=(run.r.lines||[]).find(x=>x.seg===seg&&x.en===l.en)||l;liveLine={zh:line.zh,en:line.en,who:'Mii'};
-  if(line.audio){voice.src=line.audio;await new Promise(ok=>{voice.onended=ok;voice.onerror=ok;voice.play().catch(ok);setTimeout(ok,9000);});}else await sleep(2600);
-  await sleep(350);}if(liveRun===run)liveLine=null;};
- vids[0].src=run.r.segs[0].url;await ready(vids[0]);
+  liveLine={zh:l.zh,en:l.en,who:'Mii'};
+  if(l.audio){voice.src=l.audio;await new Promise(ok=>{voice.onended=ok;voice.onerror=ok;voice.play().catch(ok);setTimeout(ok,9000);});}else await sleep(2600);
+  await sleep(500);}};
  view.play_at=Date.now();show(vids[0]);speak(1,400);await ended(vids[0]);view.seg1_end=Date.now();
- let stall=0;const s2=()=>run.r.segs?.[1];
- if(s2()?.status!=='error'){
-  if(!(vids[1].getAttribute('src')&&vids[1].readyState>=3)){const t0=Date.now();$('loading').hidden=false;$('loadingText').textContent=T('咪马上回来…','Mii is almost back…');$('retry').hidden=true;$('loading').querySelector('.spinner').hidden=false;
-   while(liveRun===run&&s2()?.status!=='error'&&!(vids[1].getAttribute('src')&&vids[1].readyState>=3))await sleep(200);
-   stall=(Date.now()-t0)/1000;$('loading').hidden=true;}
-  if(vids[1].getAttribute('src')){show(vids[1]);speak(2,2000);await ended(vids[1]);}
- }
- view.end_at=Date.now();view.stall=Math.round(stall*10)/10;liveApi('/api/round/'+run.id+'/view',view).catch(()=>{});
- clearInterval(poll);voice.pause();vids.forEach(v=>{v.pause();v.remove();});liveLine=null;if(liveRun===run)liveRun=null;
- // 回到这个选择点：继续循环原来的画面，高亮咪建议的选项
- orig?.classList.add('active');active=orig;sayLine=null;setMode('choosing');startWaiting();showSheet();$('sayBtn').disabled=false;
- $('opts').querySelectorAll('.opt').forEach(b=>b.classList.toggle('hint',b.dataset.value===run.r.suggest));
+ const t1=performance.now();await show(vids[1]);view.stall=Math.round((performance.now()-t1)/100)/10;speak(2,2000);await ended(vids[1]);
+ view.end_at=Date.now();liveApi('/api/round/'+run.id+'/view',view).catch(()=>{});
+ voice.pause();vids.forEach(v=>{v.pause();v.remove();});liveLine=null;if(liveRun===run)liveRun=null;
+ // 生成的视频代替这个选择点的分支片段：按导演选的分支更新状态，跳过紧接着的分支镜头，直接进下一场
+ const value=run.r.branch||node.options[0].value;
+ path.push({zh:run.raw,en:run.raw});orig?.classList.remove('active');active=orig;
+ state=applyChoice(state,node,value);index++;const nx=items()[index];if(nx?.shot?.includes('{'+node.key+'}'))index++;
+ $('sayBtn').disabled=false;choiceLocked=false;save();advance();
 }
 
 // episode end
