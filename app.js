@@ -52,7 +52,8 @@ const bufferedTo=v=>v.buffered.length?v.buffered.end(v.buffered.length-1):0;
 const loaded=v=>!!v.getAttribute('src')&&(v.readyState>=4&&bufferedTo(v)>=(v.duration||Infinity)-.3);
 let warmQueue=[];
 function pump(){
- if(active&&!loaded(active)&&bufferedTo(active)-active.currentTime<6)return;
+ // 正在播的镜头缓冲不足 6 秒：停掉其他半截预取，带宽全给它
+ if(active&&!loaded(active)&&bufferedTo(active)-active.currentTime<6){for(const v of videos.values())if(v!==active&&v.getAttribute('src')&&!loaded(v)){v.removeAttribute('src');v.load();}return;}
  const pending=warmQueue.map(id=>videos.get(id)).filter(Boolean);
  if(pending.some(v=>v.getAttribute('src')&&!loaded(v)))return;
  const next=pending.find(v=>!v.getAttribute('src'));if(next)startLoad(next);
