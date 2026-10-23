@@ -206,6 +206,7 @@ async function livePlay(run){
  // 咪的台词：A 声线逐句播，字幕跟着；配音还没好就只显示字幕
  const speak=async(seg,delay)=>{await sleep(delay);for(const l of (run.r.lines||[]).filter(x=>x.seg===seg)){if(liveRun!==run)return;
   liveLine={zh:l.zh,en:l.en,who:'Mii'};
+  if(!l.audio)try{run.r=await liveApi('/api/round/'+run.id);l.audio=(run.r.lines||[]).find(x=>x.seg===seg&&x.en===l.en)?.audio;}catch{}  // 配音比视频晚到时，播之前再取一次
   if(l.audio){voice.src=l.audio;await new Promise(ok=>{voice.onended=ok;voice.onerror=ok;voice.play().catch(ok);setTimeout(ok,9000);});}else await sleep(2600);
   await sleep(500);}};
  view.play_at=Date.now();show(vids[0]);speak(1,400);await ended(vids[0]);view.seg1_end=Date.now();
