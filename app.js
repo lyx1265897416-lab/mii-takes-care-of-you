@@ -45,9 +45,22 @@ function startWaiting(){
 }
 
 // video
+// 视频按需加载：当前镜头优先，后面的镜头排队，一次只预取一段，避免线上带宽被同时摊薄。
+const srcOf=v=>v.dataset.src;
+function startLoad(v){if(!v.getAttribute('src')){v.preload='auto';v.src=srcOf(v);v.load();}}
+const bufferedTo=v=>v.buffered.length?v.buffered.end(v.buffered.length-1):0;
+const loaded=v=>!!v.getAttribute('src')&&(v.readyState>=4&&bufferedTo(v)>=(v.duration||Infinity)-.3);
+let warmQueue=[];
+function pump(){
+ if(active&&!loaded(active)&&bufferedTo(active)-active.currentTime<6)return;
+ const pending=warmQueue.map(id=>videos.get(id)).filter(Boolean);
+ if(pending.some(v=>v.getAttribute('src')&&!loaded(v)))return;
+ const next=pending.find(v=>!v.getAttribute('src'));if(next)startLoad(next);
+}
+setInterval(pump,500);
 function getVideo(id){
  if(videos.has(id))return videos.get(id);const s=shots[id];if(!s?.ready)return null;
- const v=document.createElement('video');v.preload='auto';v.playsInline=true;v.setAttribute('playsinline','');v.setAttribute('webkit-playsinline','');v.src=s.src;v.poster=s.poster;v.muted=true;v.dataset.shot=id;v.disablePictureInPicture=true;
+ const v=document.createElement('video');v.preload='none';v.playsInline=true;v.setAttribute('playsinline','');v.setAttribute('webkit-playsinline','');v.dataset.src=s.src;v.poster=s.poster;v.muted=true;v.dataset.shot=id;v.disablePictureInPicture=true;
  v.addEventListener('ended',()=>{if(v===active&&mode==='playing'){index++;save();advance();}});
  v.addEventListener('error',()=>{if(v===active)showError(T('这段视频暂时未能加载。','This clip could not load.'));});
  v.addEventListener('play',()=>{if(v===active)$('playIco').innerHTML='<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>';});
@@ -57,10 +70,15 @@ function getVideo(id){
  return v;
 }
 function preload(){
- const r=items();
- const warmBranches=(node,j)=>{for(const o of node.options){const rr=route(plan.episodes[ep-1],applyChoice(state,node,o.value));for(const n of rr.slice(j+1,j+4)){if(n.choice)break;if(n.id)getVideo(n.id);}}};
+ // 排队顺序：接下来的镜头；遇到选择点时，先排每个选项的第一镜，再排各自的第二镜。
+ const r=items(),want=[];
+ const add=id=>{if(id&&!want.includes(id)&&getVideo(id))want.push(id);};
+ const warmBranches=(node,j)=>{const paths=node.options.map(o=>route(plan.episodes[ep-1],applyChoice(state,node,o.value)).slice(j+1).filter(n=>n.id||n.choice));for(let k=0;k<2;k++)for(const p of paths){if(p[k]?.choice)continue;if(p.slice(0,k).some(n=>n.choice))continue;add(p[k]?.id);}};
  if(r[index]?.choice)warmBranches(r[index],index);
- for(let j=index+1;j<Math.min(r.length,index+5);j++){if(r[j].id)getVideo(r[j].id);if(r[j].qte)continue;if(r[j].choice){warmBranches(r[j],j);break;}}
+ for(let j=index+1;j<Math.min(r.length,index+4);j++){if(r[j].id)add(r[j].id);if(r[j].qte)continue;if(r[j].choice){warmBranches(r[j],j);break;}}
+ // 已经不在路线上的半截下载直接中止，把带宽让给需要的镜头
+ for(const [id,v] of videos)if(v!==active&&!want.includes(id)&&v.getAttribute('src')&&!loaded(v)){v.removeAttribute('src');v.load();}
+ warmQueue=want;pump();
 }
 function showError(message){$('loading').hidden=false;$('loadingText').textContent=message;$('retry').hidden=false;$('loading').querySelector('.spinner').hidden=true;active?.pause();score.pause();}
 async function refresh(){try{const next=await fetch('manifest.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.json());manifest=next;shots=next.shots;}catch{}}
@@ -70,7 +88,7 @@ async function playShot(id,offset=0,{paused=false}={}){
  const seamless=videos.get(id)?.readyState>=2;
  $('loading').hidden=seamless;$('loadingText').textContent=T('稍等一下…','A little moment…');$('retry').hidden=true;$('loading').querySelector('.spinner').hidden=false;
  if(!s?.ready){showError(T('这一幕仍在制作中，进度已保留。','This scene is still being prepared. Your place is saved.'));save();return;}
- const v=getVideo(id);active?.pause();for(const o of videos.values())if(o!==v){o.pause();o.muted=true;}
+ const v=getVideo(id);startLoad(v);active?.pause();for(const o of videos.values())if(o!==v){o.pause();o.muted=true;}
  active=v;v.playbackRate=rate;v.muted=false;v.volume=1;
  try{
   await new Promise((ok,bad)=>{if(v.readyState>=2)return ok();const to=setTimeout(()=>bad(Error('load timeout')),20000);v.addEventListener('loadeddata',()=>{clearTimeout(to);ok();},{once:true});v.addEventListener('error',()=>{clearTimeout(to);bad(Error('video error'));},{once:true});if(v.networkState===HTMLMediaElement.NETWORK_EMPTY)v.load();});
@@ -269,5 +287,5 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSpeed();if(!$(
 document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();score.pause();waitVideo?.pause();save();}else if(['choosing','qte'].includes(mode)){waitVideo?.play().catch(()=>{});score.play();}});
 window.addEventListener('pagehide',save);
 
-setMode('start');labels();getVideo('E01-alarm');
+setMode('start');labels();startLoad(getVideo('E01-alarm'));
 window.__mii={get state(){return state},get episode(){return ep},get index(){return index},get mode(){return mode},get active(){return active},get items(){return items()},get manifest(){return manifest},get path(){return path}};
