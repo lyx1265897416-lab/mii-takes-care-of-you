@@ -218,8 +218,10 @@ $('playBtn').onclick=togglePause;
 $('retry').onclick=async()=>{await refresh();const n=current();if(n?.id)playShot(n.id,active?.currentTime||0);};
 const track=$('track');let dragging=false,dragTarget=0,swallow=false;
 function setBar(p){const pc=Math.max(0,Math.min(100,p*100));$('fill').style.width=pc+'%';$('knob').style.left=pc+'%';track.setAttribute('aria-valuenow',Math.round(pc));}
+const clockText=x=>{const v=Math.max(0,Math.floor(x||0));return Math.floor(v/60)+':'+pad(v%60)};
+function showTime(elapsed,total){const t=clockText(Math.min(elapsed,total))+' / '+clockText(total);if($('time').textContent!==t)$('time').textContent=t;}
 function clock(){return episodeClock(items(),shots,index,active?.currentTime||0);}
-function dragAt(x){const r=track.querySelector('i').getBoundingClientRect();const p=Math.max(0,Math.min(1,(x-r.left)/r.width));setBar(p);dragTarget=p*clock().total;}
+function dragAt(x){const r=track.querySelector('i').getBoundingClientRect();const p=Math.max(0,Math.min(1,(x-r.left)/r.width));setBar(p);const c=clock();dragTarget=p*c.total;showTime(dragTarget,c.total);}
 async function seekEpisode(target){
  // 按本集当前分支路线，把总时间换算到具体镜头和镜头内时间。
  const rr=items(),wasPaused=mode==='paused';let pos=0;
@@ -264,7 +266,7 @@ function renderExtras(now){
 function frame(now){
  if(mode==='qte')positionQte(current());
  renderSubs();renderExtras(now);
- if(['playing','paused'].includes(mode)&&!dragging){const c=clock();setBar(c.total?c.elapsed/c.total:0);}
+ if(['playing','paused'].includes(mode)&&!dragging){const c=clock();setBar(c.total?c.elapsed/c.total:0);showTime(c.elapsed,c.total);}
  if(mode==='playing'){const r=items(),s=shots[active?.dataset.shot];if(r[index+1]?.choice&&s?.decisionAt!==undefined&&active.currentTime>=s.decisionAt){active.pause();index++;advance();}}
  requestAnimationFrame(frame);
 }

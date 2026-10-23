@@ -33,7 +33,7 @@ body.en-only #subs .en{font-size:16px;color:#fff;font-weight:500}
 #phonePip{position:absolute;z-index:4;right:5%;top:12%;width:30%;aspect-ratio:3/4;overflow:hidden;border-radius:14px;border:2px solid rgba(255,255,255,.55);box-shadow:0 4px 18px rgba(0,0,0,.3);pointer-events:none}
 #phonePip img{width:100%;height:100%;object-fit:cover}
 /* progress */
-#bar{position:absolute;left:0;right:0;bottom:0;z-index:5;padding:0 max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;align-items:center;gap:12px}
+#bar{position:absolute;left:0;right:0;bottom:0;z-index:5;padding:0 max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;align-items:center;gap:10px}
 #track{flex:1;height:34px;display:flex;align-items:center;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none}
 #track i{display:block;height:2px;width:100%;background:rgba(255,255,255,.26);position:relative;border-radius:2px}
 #track i b{position:absolute;left:0;top:0;bottom:0;background:var(--gold);width:0;border-radius:2px}
@@ -41,6 +41,8 @@ body.en-only #subs .en{font-size:16px;color:#fff;font-weight:500}
 #track.drag i{height:4px}#track.drag i s{transform:scale(1.35)}
 #track:focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:4px}
 #chap{font-size:12px;color:#d8cdbf;white-space:nowrap;font-family:var(--zh);font-variant-numeric:tabular-nums;text-shadow:0 1px 4px rgba(0,0,0,.6)}
+/* 进度时长：各项目统一为「已播 / 本集总长」，12px 等宽数字，和集数同色 */
+#time{font-size:12px;color:#d8cdbf;white-space:nowrap;font-family:var(--body);font-variant-numeric:tabular-nums;letter-spacing:.02em;text-shadow:0 1px 4px rgba(0,0,0,.6)}
 body:not(.playing) #bar{display:none}
 #paused{position:absolute;inset:0;z-index:3;display:grid;place-items:center;pointer-events:none}
 #paused div{width:66px;height:66px;border-radius:50%;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.28);display:grid;place-items:center}
