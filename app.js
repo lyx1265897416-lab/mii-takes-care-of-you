@@ -255,7 +255,15 @@ function startMeta(){
  $('meta').innerHTML=[T(`${plan.episodes.length} 集`,`${plan.episodes.length} episodes`),T(`${choices} 个选择`,`${choices} choices`),T(`约 ${Math.round(total/60)} 分钟`,`≈${Math.round(total/60)} min`),T('请打开声音','Sound on')].map(x=>`<span>${x}</span>`).join('');
 }
 $('stage').style.backgroundImage='url(cover.jpg)';startMeta();$('continueBtn').hidden=!saved;
-$('startBtn').onclick=restart;
+// 测试用跳转：?jump=3.I04&s=greeting:hug,outfit:A,menu:P —— 点开始后直接到第 3 集 I04 选择点（从它前一个镜头的最后 2 秒播起）
+const JUMP=(()=>{const q=new URLSearchParams(location.search),j=q.get('jump');if(!j)return null;const [e,c]=j.split('.'),st={};
+ (q.get('s')||'').split(',').filter(Boolean).forEach(kv=>{const [k,v]=kv.split(':');st[k]=v;});return {ep:+e,choice:c,state:st};})();
+function jumpToChoice(){
+ hideCards();serial++;active?.pause();stopWaiting();state={...defaults,...JUMP.state};ep=JUMP.ep;path=[];checkpoint=null;
+ const r=items(),ci=r.findIndex(n=>n.choice===JUMP.choice);if(ci<0)return restart();
+ let pi=ci-1;while(pi>0&&!r[pi].id)pi--;index=pi;labels();playShot(r[pi].id,Math.max(0,(shots[r[pi].id]?.duration||3)-2));
+}
+$('startBtn').onclick=()=>JUMP?jumpToChoice():restart();
 $('continueBtn').onclick=()=>{
  if(!saved)return restart();hideCards();
  state={...defaults,...saved.state};ep=Math.min(plan.episodes.length,Math.max(1,saved.ep||1));path=saved.path||[];index=restoredIndex(saved,ep);labels();
