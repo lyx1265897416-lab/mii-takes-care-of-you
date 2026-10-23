@@ -194,7 +194,7 @@ function startMeta(){
  const count=steps=>steps.forEach(s=>{if(s.choice)choices++;if(s.branch)count(Object.values(s.cases)[0]||[]);});plan.episodes.forEach(e=>count(e.steps));
  $('meta').innerHTML=[T(`${plan.episodes.length} 集`,`${plan.episodes.length} episodes`),T(`${choices} 个选择`,`${choices} choices`),T(`约 ${Math.round(total/60)} 分钟`,`≈${Math.round(total/60)} min`),T('请打开声音','Sound on')].map(x=>`<span>${x}</span>`).join('');
 }
-$('stage').style.backgroundImage='url(cover.png)';startMeta();$('continueBtn').hidden=!saved;
+$('stage').style.backgroundImage='url(cover.jpg)';startMeta();$('continueBtn').hidden=!saved;
 $('startBtn').onclick=restart;
 $('continueBtn').onclick=()=>{
  if(!saved)return restart();hideCards();
@@ -289,4 +289,5 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();sc
 window.addEventListener('pagehide',save);
 
 setMode('start');labels();startLoad(getVideo('E01-alarm'));
+$('startBtn').disabled=false;$('continueBtn').disabled=false;
 window.__mii={get state(){return state},get episode(){return ep},get index(){return index},get mode(){return mode},get active(){return active},get items(){return items()},get manifest(){return manifest},get path(){return path}};
