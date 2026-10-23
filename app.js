@@ -175,6 +175,8 @@ const sleep=ms=>new Promise(ok=>setTimeout(ok,ms));
 const liveApi=(path,body)=>fetch(`http://${LIVE.host}${path}`+(body?'':`?k=${encodeURIComponent(LIVE.k)}`),body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({k:LIVE.k,...body})}:{cache:'no-store'})
  .then(r=>r.json().then(j=>{if(!r.ok)throw Error(j.err||('HTTP '+r.status));return j;}));
 let liveRun=null,liveLine=null;
+// 配音由本机中转提供：先 fetch 成 blob（和接口走同一条路），避免 https 页面直接加载 http 本机音频被拦
+const audioSrc=u=>u.startsWith(`http://${LIVE?.host}`)?fetch(u).then(r=>r.blob()).then(b=>URL.createObjectURL(b)).catch(()=>u):Promise.resolve(u);
 function liveStatus(t){$('liveStatus').textContent=t||'';$('liveStatus').hidden=!t;}
 async function liveRound(node,raw){
  // 规则同 Magnus（docs/互动剧实时生成规则-v0.1.md）：导演判定几乎等于某个预设选项时走预设分支；
@@ -207,7 +209,7 @@ async function livePlay(run){
  const speak=async(seg,delay)=>{await sleep(delay);for(const l of (run.r.lines||[]).filter(x=>x.seg===seg)){if(liveRun!==run)return;
   liveLine={zh:l.zh,en:l.en,who:'Mii'};
   if(!l.audio)try{run.r=await liveApi('/api/round/'+run.id);l.audio=(run.r.lines||[]).find(x=>x.seg===seg&&x.en===l.en)?.audio;}catch{}  // 配音比视频晚到时，播之前再取一次
-  if(l.audio){voice.src=l.audio;await new Promise(ok=>{voice.onended=ok;voice.onerror=ok;voice.play().catch(ok);setTimeout(ok,9000);});}else await sleep(2600);
+  if(l.audio){voice.src=await audioSrc(l.audio);await new Promise(ok=>{voice.onended=ok;voice.onerror=ok;voice.play().catch(ok);setTimeout(ok,9000);});}else await sleep(2600);
   await sleep(500);}};
  view.play_at=Date.now();show(vids[0]);speak(1,400);await ended(vids[0]);view.seg1_end=Date.now();
  const t1=performance.now();await show(vids[1]);view.stall=Math.round((performance.now()-t1)/100)/10;speak(2,2000);await ended(vids[1]);
