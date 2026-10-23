@@ -165,7 +165,7 @@ $('say').addEventListener('submit',async e=>{
  if(r?.choose&&node.options.some(o=>o.value===r.choose))setTimeout(()=>choose(node,r.choose),r.reply?1600:300);
 });
 
-// 实时回应（Vivix）：链接带 ?live=127.0.0.1:8898&k=口令[&mode=10+10] 时，自由输入交给本机中转（实时输入-vivix/mii_live_server.py）
+// 实时回应（Vivix）：链接带 ?live=127.0.0.1:8898&k=口令[&mode=10+10] 时，自由输入交给本机中转（实时输入-vivix/mii_vivix_relay.py）
 // 同时生成两段视频（默认 5+10 秒）和 A 声线台词；不带参数时仍用上面 talk.js 的本地回应。参数记在本次会话里，刷新、换集都还在。
 const LIVE=(()=>{const q=new URLSearchParams(location.search);let v=null;try{v=JSON.parse(sessionStorage.getItem('mii40-live')||'null')}catch{}
  if(q.get('live')&&q.get('k'))v={host:q.get('live'),k:q.get('k'),mode:q.get('mode')==='10+10'?'10+10':'5+10'};
