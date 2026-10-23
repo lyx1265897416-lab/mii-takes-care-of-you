@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#120d09">
+<title>A Day with Mii</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=Figtree:wght@400;500;600&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css?v=40">
+</head>
+<body class="start">
+<div id="stage">
+  <div id="films"></div>
+  <div class="shade"></div>
+  <div id="paused" hidden><div><svg viewBox="0 0 24 24" width="26" height="26" fill="#fff"><path d="M8 5.5v13l10.5-6.5z"/></svg></div></div>
+  <header id="top">
+    <div class="brand"><b>Mii</b><span id="epName"></span></div>
+    <button class="icon" id="menuBtn" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="#f2ebe1" stroke-width="1.8" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>
+  </header>
+  <nav id="menu" hidden>
+    <div class="lab"><span class="only-zh">选集</span><span class="only-en">Episodes</span></div>
+    <div id="epList"></div>
+    <div class="sep"></div>
+    <button id="mSub" hidden><span>字幕</span><small id="mSubV"></small></button>
+    <button id="mBack"><span><span class="only-zh">返回上一个选择</span><span class="only-en">Back to last choice</span></span></button>
+    <button id="mRestart"><span><span class="only-zh">从头开始</span><span class="only-en">Start over</span></span></button>
+  </nav>
+  <div id="thought" hidden></div>
+  <aside id="phonePip" hidden><img id="pipImage" alt=""></aside>
+  <div id="subs" aria-live="polite"></div>
+  <div id="loading" role="status" hidden><span class="spinner"></span><span id="loadingText"></span><button id="retry" hidden></button></div>
+  <div id="bar">
+    <button class="icon" id="playBtn" aria-label="Pause"><svg viewBox="0 0 24 24" fill="#f2ebe1" id="playIco"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button>
+    <div id="track" role="slider" tabindex="0" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i><b id="fill"></b><s id="knob"></s></i></div>
+    <div id="chap"></div>
+    <div id="speedWrap"><button id="speedBtn" aria-label="Playback speed" aria-expanded="false">1.0x</button><div id="speedMenu" hidden></div></div>
+  </div>
+  <button id="headQte" class="headQte" hidden><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 17V9a2 2 0 0 1 4 0v7-10a2 2 0 0 1 4 0v10-7a2 2 0 0 1 4 0v8-4a2 2 0 0 1 4 0v9c0 5-4 8-9 8-3 0-5-2-7-4l-5-6a2 2 0 0 1 3-3l3 3"/></svg></button>
+  <section id="sheet" aria-label="Your choice">
+    <div class="cue" id="cue"></div>
+    <div id="opts"></div>
+    <form id="say" autocomplete="off">
+      <input id="sayIn" maxlength="80" aria-label="Say something to Mii">
+      <button id="sayBtn" type="submit" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+    </form>
+  </section>
+
+  <section class="card" id="startCard">
+    <div class="kicker">Interactive Series<span class="only-zh"> · 互动短剧</span></div>
+    <h1 class="only-zh">今天不要上班，<br><em>咪养你。</em></h1>
+    <h1 class="only-en">No work today. <em>Mii's got you.</em></h1>
+    <p class="only-zh">从闹钟响起到晚安，一只认真又有点笨拙的小猫，替你过完这一天。每一个选择，都由你来做。</p>
+    <p class="only-en">From the first alarm to goodnight, one very determined little cat takes care of your whole day. Every choice is yours.</p>
+    <div class="meta" id="meta"></div>
+    <button class="cta" id="startBtn"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5.5v13l10.5-6.5z"/></svg><span class="only-zh">和咪过一天</span><span class="only-en">Spend the day with Mii</span></button>
+    <button class="cta ghost" id="continueBtn" hidden><span class="only-zh">继续上次的这一天</span><span class="only-en">Continue our day</span></button>
+  </section>
+
+  <section class="card" id="epCard" hidden>
+    <div class="done" id="epDone"></div>
+    <div class="num" id="epNum"></div>
+    <div class="t" id="epT"></div>
+    <div class="te" id="epTe"></div>
+    <button class="cta" id="epGo"><span class="only-zh">继续观看</span><span class="only-en">Continue</span></button>
+  </section>
+
+  <section class="card" id="endCard" hidden>
+    <div class="kicker"><span class="only-zh">第 10 集 · 完</span><span class="only-en">Good night</span></div>
+    <h1 class="only-zh">今天，<br>被<em>咪</em>照顾了一整天。</h1>
+    <h1 class="only-en">A whole day, <em>looked after by Mii.</em></h1>
+    <ul class="path" id="endPath"></ul>
+    <div class="row">
+      <button class="cta ghost" id="endBack"><span class="only-zh">换个选择</span><span class="only-en">Change a choice</span></button>
+      <button class="cta ghost" id="endEps"><span class="only-zh">选集</span><span class="only-en">Episodes</span></button>
+    </div>
+    <button class="cta" id="endRestart"><span class="only-zh">再和咪过一天</span><span class="only-en">Spend another day</span></button>
+  </section>
+  <div id="toast" hidden></div>
+</div>
+<script type="module" src="app.js?v=40"></script>
+</body>
+</html>
