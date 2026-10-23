@@ -19,7 +19,7 @@ let state={...defaults},ep=1,index=0,active=null,mode='start',serial=0,choiceLoc
 let saved;try{saved=JSON.parse(safeRead('mii27-complete-progress')||'null')}catch{}
 const videos=new Map(),cleanupLimit=24;let waitVideo=null;
 const score=new MusicMixer();
-const MODES=['start','loading','playing','paused','choosing','qte','carding','ended'];
+const MODES=['start','loading','playing','paused','choosing','qte','carding','ended','live'];
 function setMode(m){mode=m;document.body.classList.remove(...MODES);document.body.classList.add(m);if(m==='paused')document.body.classList.add('playing');$('headQte').hidden=m!=='qte';$('paused').hidden=m!=='paused';if(m!=='choosing')closeSheet();}
 
 const items=()=>route(plan.episodes[ep-1],state),current=()=>items()[index];
@@ -50,12 +50,13 @@ const srcOf=v=>v.dataset.src;
 function startLoad(v){if(!v.getAttribute('src')){v.preload='auto';v.src=srcOf(v);v.load();}}
 const bufferedTo=v=>v.buffered.length?v.buffered.end(v.buffered.length-1):0;
 const loaded=v=>!!v.getAttribute('src')&&(v.readyState>=4&&bufferedTo(v)>=(v.duration||Infinity)-.3);
+const fetching=v=>!!v.getAttribute('src')&&v.networkState===HTMLMediaElement.NETWORK_LOADING&&!loaded(v);
 let warmQueue=[];
 function pump(){
- // 正在播的镜头缓冲不足 6 秒：停掉其他半截预取，带宽全给它
- if(active&&!loaded(active)&&bufferedTo(active)-active.currentTime<6){for(const v of videos.values())if(v!==active&&v.getAttribute('src')&&!loaded(v)){v.removeAttribute('src');v.load();}return;}
+ // 正在播的镜头缓冲不足 3 秒：停掉其他半截预取，带宽全给它；不足 6 秒时先不开始新的预取
+ if(active&&!loaded(active)){const ahead=bufferedTo(active)-active.currentTime;if(ahead<3)for(const v of videos.values())if(v!==active&&fetching(v)){v.removeAttribute('src');v.load();}if(ahead<6)return;}
  const pending=warmQueue.map(id=>videos.get(id)).filter(Boolean);
- if(pending.some(v=>v.getAttribute('src')&&!loaded(v)))return;
+ if(pending.some(fetching))return;
  const next=pending.find(v=>!v.getAttribute('src'));if(next)startLoad(next);
 }
 setInterval(pump,500);
@@ -135,11 +136,12 @@ function openChoice(node){
  const root=$('opts');root.replaceChildren();
  for(const o of node.options){const b=document.createElement('button');b.className='opt';b.dataset.value=o.value;b.innerHTML=optHTML(o);b.onclick=()=>choose(node,o.value);root.append(b);}
  $('sayIn').value='';$('sayBtn').disabled=false;
- setTimeout(()=>{if(mode!=='choosing')return;$('sheet').classList.add('show');$('subs').style.bottom=($('sheet').offsetHeight+24)+'px';},150);
+ showSheet();
 }
+function showSheet(){setTimeout(()=>{if(mode!=='choosing')return;$('sheet').classList.add('show');$('subs').style.bottom=($('sheet').offsetHeight+24)+'px';},150);}
 function closeSheet(){$('sheet').classList.remove('show');$('subs').style.bottom='';sayLine=null;}
 function choose(node,value){
- if(choiceLocked||mode!=='choosing')return;choiceLocked=true;
+ if(choiceLocked||mode!=='choosing')return;choiceLocked=true;liveRun=null;liveStatus('');
  $('opts').querySelectorAll('button').forEach(x=>x.disabled=true);
  const o=node.options.find(x=>x.value===value);path.push({zh:o.zh,en:o.en});
  stopWaiting();closeSheet();state=applyChoice(state,node,value);index++;save();advance();
@@ -149,6 +151,7 @@ function choose(node,value){
 let sayLine=null;
 $('say').addEventListener('submit',async e=>{
  e.preventDefault();const node=current(),raw=$('sayIn').value.trim();if(!raw||mode!=='choosing'||!node?.choice)return;
+ if(LIVE){if(liveRun)return;$('sayIn').value='';$('sayBtn').disabled=true;return liveRound(node,raw);}
  $('sayIn').value='';$('sayBtn').disabled=true;
  sayLine=EN?{en:raw,k:'her'}:{zh:raw,k:'her'};
  const ctx={text:raw,lang,episode:ep,choice:node.choice,key:node.key,options:node.options,state:{...state},prompt:cueFor(node)};
@@ -161,6 +164,61 @@ $('say').addEventListener('submit',async e=>{
  $('sayBtn').disabled=false;
  if(r?.choose&&node.options.some(o=>o.value===r.choose))setTimeout(()=>choose(node,r.choose),r.reply?1600:300);
 });
+
+// 实时回应（Vivix）：链接带 ?live=127.0.0.1:8898&k=口令[&mode=10+10] 时，自由输入交给本机中转（实时输入-vivix/mii_live_server.py）
+// 同时生成两段视频（默认 5+10 秒）和 A 声线台词；不带参数时仍用上面 talk.js 的本地回应。参数记在本次会话里，刷新、换集都还在。
+const LIVE=(()=>{const q=new URLSearchParams(location.search);let v=null;try{v=JSON.parse(sessionStorage.getItem('mii40-live')||'null')}catch{}
+ if(q.get('live')&&q.get('k'))v={host:q.get('live'),k:q.get('k'),mode:q.get('mode')==='10+10'?'10+10':'5+10'};
+ try{if(v)sessionStorage.setItem('mii40-live',JSON.stringify(v))}catch{}return v;})();
+if(LIVE)$('sayIn').placeholder=T('对咪说点什么，咪会实时回应你…','Say something. Mii answers live…');
+const sleep=ms=>new Promise(ok=>setTimeout(ok,ms));
+const liveApi=(path,body)=>fetch(`http://${LIVE.host}${path}`+(body?'':`?k=${encodeURIComponent(LIVE.k)}`),body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({k:LIVE.k,...body})}:{cache:'no-store'})
+ .then(r=>r.json().then(j=>{if(!r.ok)throw Error(j.err||('HTTP '+r.status));return j;}));
+let liveRun=null,liveLine=null;
+function liveStatus(t){$('liveStatus').textContent=t||'';$('liveStatus').hidden=!t;}
+async function liveRound(node,raw){
+ const run={node,sent:performance.now()};liveRun=run;
+ sayLine=EN?{en:raw,k:'her'}:{zh:raw,k:'her'};
+ const secs=()=>Math.round((performance.now()-run.sent)/1000);
+ const timer=setInterval(()=>{if(liveRun!==run||run.playing)return clearInterval(timer);liveStatus(T(`咪正在准备回应… ${secs()} 秒`,`Mii is getting ready… ${secs()}s`));},500);
+ try{
+  run.id=(await liveApi('/api/round',{input:raw,mode:LIVE.mode,shot:active?.dataset.shot,choice:node.choice,episode:ep,options:node.options,lang})).id;
+  while(liveRun===run){
+   run.r=await liveApi('/api/round/'+run.id);const s1=run.r.segs?.[0];
+   if(s1?.status==='error'||run.r.status==='error'&&s1?.status!=='ready')throw Error(s1?.err||run.r.err||'生成失败');
+   if(s1?.status==='ready'&&mode==='choosing'&&current()===node){clearInterval(timer);return livePlay(run);}
+   await sleep(1000);
+  }
+ }catch(err){clearInterval(timer);if(liveRun!==run)return;liveRun=null;console.warn('[mii] live failed',err);liveStatus(T('这一轮没生成出来：','This round failed: ')+err.message);$('sayBtn').disabled=false;}
+}
+async function livePlay(run){
+ run.playing=true;liveStatus('');stopWaiting();active?.pause();setMode('live');
+ const view={},voice=new Audio(),orig=active;
+ const vids=[0,1].map(()=>{const v=document.createElement('video');v.playsInline=true;v.setAttribute('playsinline','');v.preload='auto';$('films').append(v);return v;});
+ const poll=setInterval(async()=>{try{run.r=await liveApi('/api/round/'+run.id);const s2=run.r.segs?.[1];if(s2?.status==='ready'&&!vids[1].getAttribute('src')){vids[1].src=s2.url;vids[1].load();}if(run.r.status!=='generating')clearInterval(poll);}catch{}},1000);
+ const show=v=>{for(const o of $('films').querySelectorAll('video'))o.classList.toggle('active',o===v);v.play().catch(()=>{});};
+ const ended=v=>new Promise(ok=>{v.onended=ok;v.onerror=ok;});
+ const ready=v=>new Promise(ok=>{if(v.readyState>=3)ok();else{v.addEventListener('canplay',ok,{once:true});v.addEventListener('error',ok,{once:true});}});
+ // 咪的台词：A 声线逐句播，字幕跟着；配音还没好就只显示字幕
+ const speak=async(seg,delay)=>{await sleep(delay);for(const l of (run.r.lines||[]).filter(x=>x.seg===seg)){if(liveRun!==run)return;
+  const line=(run.r.lines||[]).find(x=>x.seg===seg&&x.en===l.en)||l;liveLine={zh:line.zh,en:line.en,who:'Mii'};
+  if(line.audio){voice.src=line.audio;await new Promise(ok=>{voice.onended=ok;voice.onerror=ok;voice.play().catch(ok);setTimeout(ok,9000);});}else await sleep(2600);
+  await sleep(350);}if(liveRun===run)liveLine=null;};
+ vids[0].src=run.r.segs[0].url;await ready(vids[0]);
+ view.play_at=Date.now();show(vids[0]);speak(1,400);await ended(vids[0]);view.seg1_end=Date.now();
+ let stall=0;const s2=()=>run.r.segs?.[1];
+ if(s2()?.status!=='error'){
+  if(!(vids[1].getAttribute('src')&&vids[1].readyState>=3)){const t0=Date.now();$('loading').hidden=false;$('loadingText').textContent=T('咪马上回来…','Mii is almost back…');$('retry').hidden=true;$('loading').querySelector('.spinner').hidden=false;
+   while(liveRun===run&&s2()?.status!=='error'&&!(vids[1].getAttribute('src')&&vids[1].readyState>=3))await sleep(200);
+   stall=(Date.now()-t0)/1000;$('loading').hidden=true;}
+  if(vids[1].getAttribute('src')){show(vids[1]);speak(2,2000);await ended(vids[1]);}
+ }
+ view.end_at=Date.now();view.stall=Math.round(stall*10)/10;liveApi('/api/round/'+run.id+'/view',view).catch(()=>{});
+ clearInterval(poll);voice.pause();vids.forEach(v=>{v.pause();v.remove();});liveLine=null;if(liveRun===run)liveRun=null;
+ // 回到这个选择点：继续循环原来的画面，高亮咪建议的选项
+ orig?.classList.add('active');active=orig;sayLine=null;setMode('choosing');startWaiting();showSheet();$('sayBtn').disabled=false;
+ $('opts').querySelectorAll('.opt').forEach(b=>b.classList.toggle('hint',b.dataset.value===run.r.suggest));
+}
 
 // episode end
 function episodeEnd(){
@@ -250,6 +308,7 @@ function renderSubs(){
  let c=null,key='';
  if(['playing','paused'].includes(mode)){const s=shots[active?.dataset.shot],t=active?.currentTime||0;c=s?.captions?.find(q=>t>=q.start&&t<q.end)||null;key=(active?.dataset.shot||'')+(c?c.start:'');}
  else if(mode==='choosing'&&sayLine){c=sayLine;key='say'+JSON.stringify(sayLine);}
+ else if(mode==='live'&&liveLine){c=liveLine;key='live'+liveLine.en;}
  if(key!==lastKey){lastKey=key;showSub(c);}
 }
 function renderExtras(now){

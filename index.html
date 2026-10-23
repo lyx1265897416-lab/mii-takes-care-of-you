@@ -32,14 +32,15 @@
   <div id="loading" role="status" hidden><span class="spinner"></span><span id="loadingText"></span><button id="retry" hidden></button></div>
   <div id="bar">
     <button class="icon" id="playBtn" aria-label="Pause"><svg viewBox="0 0 24 24" fill="#f2ebe1" id="playIco"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button>
-    <div id="track" role="slider" tabindex="0" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i><b id="fill"></b><s id="knob"></s></i></div>
     <div id="time" aria-hidden="true">0:00 / 0:00</div>
+    <div id="track" role="slider" tabindex="0" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i><b id="fill"></b><s id="knob"></s></i></div>
     <div id="chap"></div>
     <div id="speedWrap"><button id="speedBtn" aria-label="Playback speed" aria-expanded="false">1.0x</button><div id="speedMenu" hidden></div></div>
   </div>
   <button id="headQte" class="headQte" hidden><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 17V9a2 2 0 0 1 4 0v7-10a2 2 0 0 1 4 0v10-7a2 2 0 0 1 4 0v8-4a2 2 0 0 1 4 0v9c0 5-4 8-9 8-3 0-5-2-7-4l-5-6a2 2 0 0 1 3-3l3 3"/></svg></button>
   <section id="sheet" aria-label="Your choice">
     <div class="cue" id="cue"></div>
+    <div class="cue" id="liveStatus" role="status" hidden></div>
     <div id="opts"></div>
     <form id="say" autocomplete="off">
       <input id="sayIn" maxlength="80" aria-label="Say something to Mii">
