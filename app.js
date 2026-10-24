@@ -190,7 +190,7 @@ async function liveRound(node,raw){
  const timer=setInterval(()=>{if(liveRun!==run||run.playing)return clearInterval(timer);const n=(run.r?.segs||[]).filter(s=>s.status==='ready').length;
   liveStatus(run.r?.segs?T(`两段同时生成中 · 已完成 ${n}/2 · ${secs()} 秒`,`Generating both parts · ${n}/2 done · ${secs()}s`):T(`咪在想怎么回应… ${secs()} 秒`,`Mii is thinking… ${secs()}s`));},500);
  try{
-  run.id=(await liveApi('/api/round',{input:raw,mode:LIVE.mode,shot:active?.dataset.shot,choice:node.choice,episode:ep,options:node.options,lang})).id;
+  run.id=(await liveApi('/api/round',{input:raw,mode:LIVE.mode,shot:active?.dataset.shot,choice:node.choice,episode:ep,options:node.options,state,lang})).id;
   while(liveRun===run){
    run.r=await liveApi('/api/round/'+run.id);const segs=run.r.segs||[];
    if(run.r.status==='preset'){clearInterval(timer);liveRun=null;liveStatus(T('按预设剧情继续','Continuing with that choice'));setTimeout(()=>{liveStatus('');choose(node,run.r.preset);},900);return;}
