@@ -84,7 +84,7 @@ function preload(){
 }
 function showError(message){$('loading').hidden=false;$('loadingText').textContent=message;$('retry').hidden=false;$('loading').querySelector('.spinner').hidden=true;active?.pause();score.pause();}
 async function refresh(){try{const next=await fetch('manifest.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.json());manifest=next;shots=next.shots;}catch{}}
-async function playShot(id,offset=0,{paused=false}={}){
+async function playShot(id,offset=0,{paused=false,retry=0}={}){
  stopWaiting();const ticket=++serial;choiceLocked=false;let s=shots[id];
  if(!s?.ready){await refresh();s=shots[id];if(ticket!==serial)return;}
  const seamless=videos.get(id)?.readyState>=2;
@@ -93,7 +93,7 @@ async function playShot(id,offset=0,{paused=false}={}){
  const v=getVideo(id);startLoad(v);active?.pause();for(const o of videos.values())if(o!==v){o.pause();o.muted=true;}
  active=v;v.playbackRate=rate;v.muted=false;v.volume=1;
  try{
-  await new Promise((ok,bad)=>{if(v.readyState>=2)return ok();const to=setTimeout(()=>bad(Error('load timeout')),20000);v.addEventListener('loadeddata',()=>{clearTimeout(to);ok();},{once:true});v.addEventListener('error',()=>{clearTimeout(to);bad(Error('video error'));},{once:true});if(v.networkState===HTMLMediaElement.NETWORK_EMPTY)v.load();});
+  await new Promise((ok,bad)=>{if(v.readyState>=2)return ok();const to=setTimeout(()=>bad(Error('load timeout')),60000);v.addEventListener('loadeddata',()=>{clearTimeout(to);ok();},{once:true});v.addEventListener('error',()=>{clearTimeout(to);bad(Error('video error'));},{once:true});if(v.networkState===HTMLMediaElement.NETWORK_EMPTY)v.load();});
   if(ticket!==serial)return;
   v.currentTime=Math.min(offset,Math.max(0,(v.duration||s.duration)-.1));
   if(!paused)await v.play();
@@ -101,7 +101,10 @@ async function playShot(id,offset=0,{paused=false}={}){
   for(const o of videos.values())o.classList.toggle('active',o===v);
   $('stage').style.backgroundImage=`url("${s.poster}")`;
   $('loading').hidden=true;setMode(paused?'paused':'playing');labels();if(!paused)prepareScore({...s,id});preload();save();
- }catch(e){if(ticket===serial){v.pause();showError(T('点击重试这一幕。','Tap to retry this scene.'));}}
+ }catch(e){if(ticket===serial){v.pause();
+  // 网络慢时先自动重新加载一次（换一个新的 video 元素），还不行才让观众点重试
+  if(!retry){const at=v.currentTime||offset;videos.delete(id);v.removeAttribute('src');v.load();v.remove();if(active===v)active=null;return playShot(id,at,{paused,retry:1});}
+  showError(T('网络有点慢，点一下再试这一幕。','The network is slow. Tap to try this scene again.'));}}
 }
 function advance(){
  const node=current();
