@@ -1,0 +1,280 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mii Live</title>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500&family=Figtree:wght@400;500;600&family=Noto+Sans+SC:wght@400;500&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<style>
+/* Layout: one 9:16 screen, letterboxed on wide displays; everything sits on the video. Warm cream-and-ginger accents for a sunny day at home with a kitten. */
+:root{
+  --night:#14100c;        /* warm dark */
+  --concrete:#c9cdd2;     /* fluorescent grey text */
+  --mute:#8a9099;
+  --gold:#f2a65a;         /* ginger fur */
+  --gold-deep:#c0743a;
+  --glass:rgba(10,12,16,.62);
+  --line:rgba(242,166,90,.42);
+  --display:"Fraunces",Georgia,serif;
+  --body:"Figtree","Helvetica Neue",Arial,"Noto Sans SC","PingFang SC",sans-serif;
+  --zh:"Noto Sans SC","PingFang SC","Hiragino Sans GB",sans-serif;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;background:var(--night);color:var(--concrete);font-family:var(--body);overflow:hidden}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit}
+#stage{position:relative;height:100%;max-width:calc(100vh * 9 / 16);max-width:calc(100dvh * 9 / 16);margin:0 auto;overflow:hidden;background:#000;isolation:isolate}
+video.v{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;z-index:0;background:#000}
+video.v.on{opacity:1;z-index:1}
+.shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,.55),transparent 18%,transparent 52%,rgba(0,0,0,.78));z-index:2}
+.shade.deep{background:linear-gradient(to bottom,rgba(0,0,0,.55),transparent 18%,transparent 34%,rgba(0,0,0,.9))}
+/* top bar */
+#top{position:absolute;left:0;right:0;top:0;z-index:6;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(12px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px))}
+.brand{font-family:var(--display);letter-spacing:.18em;font-size:13px;text-transform:uppercase;color:var(--concrete);display:flex;gap:10px;align-items:baseline;min-width:0}
+.brand b{color:var(--gold);font-weight:500;font-family:var(--display);letter-spacing:.06em;text-transform:none;font-size:16px}
+.brand span{font-family:var(--body);letter-spacing:.08em;font-size:11px;color:var(--mute);white-space:nowrap}
+.icon{width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.35);display:grid;place-items:center;cursor:pointer;flex:none}
+.icon svg{width:18px;height:18px;display:block}
+.icon:focus-visible,.opt:focus-visible,.cta:focus-visible,#say button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+/* subtitles */
+#subs{position:absolute;left:0;right:0;z-index:4;bottom:calc(64px + env(safe-area-inset-bottom,0px));padding:0 max(20px,env(safe-area-inset-left,0px));text-align:center;pointer-events:none;display:flex;flex-direction:column;gap:3px;transition:bottom .25s ease}
+#subs .en{font-size:17px;line-height:1.35;color:#fff;font-weight:500;text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 14px rgba(0,0,0,.6);text-wrap:balance}
+#subs .zh{font-family:var(--zh);font-size:14px;color:#e9e3d6;text-shadow:0 1px 3px rgba(0,0,0,.9)}
+#subs .who{font-size:10px;letter-spacing:.2em;color:var(--gold);text-transform:uppercase}
+#subs.you .en{color:var(--gold);font-style:italic}
+body.choosing #subs{top:auto}
+/* progress */
+#bar{position:absolute;left:0;right:0;bottom:0;z-index:5;padding:0 max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;align-items:center;gap:12px}
+#track{flex:1;height:22px;display:flex;align-items:center;cursor:pointer;touch-action:none}
+#track i{display:block;height:2px;width:100%;background:rgba(255,255,255,.22);position:relative;border-radius:2px}
+#track i b{position:absolute;left:0;top:0;bottom:0;background:var(--gold);width:0;border-radius:2px}
+#chap{font-size:11px;letter-spacing:.12em;color:var(--mute);white-space:nowrap;text-transform:uppercase;font-variant-numeric:tabular-nums}
+body.choosing #bar,body.ended #bar,body.start #bar{display:none}
+/* pause badge */
+#paused{position:absolute;inset:0;z-index:3;display:grid;place-items:center;pointer-events:none}
+#paused div{width:66px;height:66px;border-radius:50%;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.25);display:grid;place-items:center}
+/* choice sheet */
+#sheet{position:absolute;left:0;right:0;bottom:0;z-index:7;padding:0 max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:10px;transform:translateY(12px);opacity:0;transition:opacity .35s ease,transform .35s ease;pointer-events:none}
+#sheet.show{opacity:1;transform:none;pointer-events:auto}
+.cue{font-size:12px;letter-spacing:.06em;color:var(--mute);text-align:center;font-style:italic;padding-bottom:2px}
+.cue .zh{font-family:var(--zh);font-style:normal;display:block;margin-top:2px}
+.opt{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:3px;min-height:56px;padding:11px 16px;border-radius:14px;border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);cursor:pointer;transition:border-color .2s,background .2s,transform .12s}
+.opt:hover{border-color:var(--gold)}
+.opt:active{transform:scale(.985)}
+.opt .en{font-size:15px;font-weight:500;color:#f4efe4;line-height:1.3}
+.opt .zh{font-family:var(--zh);font-size:12.5px;color:#cfc6b4}
+.opt.hint{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold),0 0 22px rgba(242,166,90,.28)}
+#say{display:flex;gap:8px;align-items:center;border-radius:14px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.5);padding:5px 5px 5px 14px}
+#say input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:#fff;font:inherit;font-size:15px;padding:8px 0}
+#say input::placeholder{color:#8f949c}
+#say button{width:40px;height:40px;border-radius:10px;border:0;background:var(--gold);color:#1a1206;display:grid;place-items:center;cursor:pointer;flex:none}
+#say button:disabled{background:#3a3d42;color:#777}
+#say button svg{width:18px;height:18px}
+.saynote{font-size:11px;color:#7d838c;text-align:center}
+/* start + end cards */
+.card{position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;justify-content:flex-end;gap:16px;padding:calc(40px + env(safe-area-inset-top,0px)) max(22px,env(safe-area-inset-right,0px)) calc(30px + env(safe-area-inset-bottom,0px)) max(22px,env(safe-area-inset-left,0px));background:linear-gradient(to bottom,rgba(4,5,7,.15),rgba(4,5,7,.25) 35%,rgba(4,5,7,.92) 72%)}
+.card[hidden]{display:none!important}
+#endCard{background:linear-gradient(to bottom,rgba(4,5,7,.55),rgba(4,5,7,.88) 30%,rgba(4,5,7,.96));backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);justify-content:center}
+.kicker{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--gold)}
+.card h1{font-family:var(--display);font-weight:400;font-size:clamp(34px,10vw,46px);line-height:1.02;margin:0;color:#f6f1e6;letter-spacing:.02em;text-wrap:balance}
+.card h1 em{font-style:normal;color:var(--gold)}
+.card p{margin:0;font-size:15px;line-height:1.5;color:#d4d7dc;max-width:34ch}
+.card p.zh{font-family:var(--zh);font-size:13.5px;color:#b9bdc4;margin-top:-8px}
+.cta{align-self:stretch;min-height:54px;border-radius:14px;border:0;background:var(--gold);color:#1b1307;font-weight:600;font-size:16px;letter-spacing:.04em;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px}
+.cta.ghost{flex-direction:column;gap:1px;font-size:14px;line-height:1.25;background:transparent;border:1px solid rgba(255,255,255,.25);color:#e8e8e8;font-weight:500}
+.cta.ghost .zh{font-size:12px;color:#aab0b8}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.meta{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--mute);letter-spacing:.04em}
+.meta span::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--gold-deep);margin-right:7px;vertical-align:middle}
+.path{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13px;color:#cfd2d7}
+.path li{display:flex;gap:10px;align-items:baseline}
+.path li b{font-weight:500;color:var(--gold);font-size:11px;letter-spacing:.14em;min-width:22px}
+.path li .zh{font-family:var(--zh);color:#9ea3ab;font-size:12px}
+.tease{border-left:2px solid var(--gold);padding:2px 0 2px 12px;font-size:13.5px;line-height:1.5;color:#d9dbe0}
+.tease .zh{font-family:var(--zh);display:block;color:#a7abb2;font-size:12.5px;margin-top:3px}
+/* menu */
+#menu{position:absolute;z-index:9;top:calc(58px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));min-width:200px;background:rgba(14,16,20,.96);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:6px;display:flex;flex-direction:column}
+#menu button{background:none;border:0;text-align:left;padding:11px 12px;border-radius:9px;font-size:14px;cursor:pointer;display:flex;justify-content:space-between;gap:12px}
+#menu button:hover{background:rgba(255,255,255,.06)}
+#menu button small{color:var(--mute)}
+#toast{position:absolute;z-index:10;left:50%;top:calc(64px + env(safe-area-inset-top,0px));transform:translateX(-50%);background:rgba(0,0,0,.75);border:1px solid rgba(255,255,255,.14);padding:8px 14px;border-radius:999px;font-size:12.5px;white-space:nowrap}
+.dots{display:inline-flex;gap:4px}.dots i{width:5px;height:5px;border-radius:50%;background:var(--gold);animation:d 1s infinite}.dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
+@keyframes d{0%,100%{opacity:.25}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+body.lang-en .zh{display:none!important}
+</style>
+<style>
+#liveChip{position:absolute;z-index:6;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));top:calc(58px + env(safe-area-inset-top,0px));font-size:11.5px;line-height:1.45;color:#cfd3d9;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:7px 10px}
+#liveChip b{color:var(--gold);font-weight:600}
+#liveWait{position:absolute;inset:0;z-index:7;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(4,5,7,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);text-align:center;padding:0 24px}
+#liveWait .t{font-family:var(--display);font-size:44px;color:#f3eee2;font-variant-numeric:tabular-nums}
+#liveWait .s{font-size:13px;color:#d4d7dc;max-width:30ch}
+#liveWait .her{font-size:13px;color:var(--gold);font-style:italic;max-width:30ch}
+.rno{font-size:11px;letter-spacing:.16em;color:var(--mute);text-transform:uppercase;text-align:center}
+</style>
+<div id="stage">
+  <video class="v" id="va" playsinline webkit-playsinline preload="auto"></video>
+  <video class="v" id="vb" playsinline webkit-playsinline preload="auto"></video>
+  <video class="v" id="vc" playsinline webkit-playsinline preload="auto"></video>
+  <div class="shade" id="shade"></div>
+  <header id="top">
+    <div class="brand"><b>Mii</b> No work today <span>LIVE</span></div>
+    <button class="icon" id="menuBtn" aria-label="Menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="#e8e8e8" stroke-width="1.8" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>
+  </header>
+  <nav id="menu" hidden>
+    <button id="mLang"><span>Subtitles</span><small id="mLangV"></small></button>
+    <button id="mRestart"><span>Restart from the opening <span class="zh">· 回到开场</span></span></button>
+  </nav>
+  <div id="liveChip" hidden></div>
+  <div id="subs" aria-live="polite"></div>
+  <section id="sheet" aria-label="Your choice">
+    <div class="rno" id="rno"></div>
+    <div class="cue" id="cue"></div>
+    <button class="opt" id="optA"></button>
+    <button class="opt" id="optB"></button>
+    <form id="say" autocomplete="off">
+      <input id="sayIn" maxlength="80" placeholder="Or tell Mii yourself… / 或者直接跟咪说" aria-label="Say something to Mii">
+      <button id="sayBtn" type="submit" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+    </form>
+  </section>
+  <div id="liveWait" hidden><div class="her" id="lwH"></div><div class="t"><span id="lwT">0.0</span>s</div><div class="s" id="lwS"></div></div>
+  <section class="card" id="startCard">
+    <div class="kicker">Live interactive · 实时互动测试</div>
+    <h1>No work today. <em>Mii’s got you.</em></h1>
+    <p>Only the opening is pre-made. After that, every scene is generated live from what you choose or tell Mii, all day long.</p>
+    <p class="zh">只有开场是预制的。之后每一段都根据你的选择或你对咪说的话实时生成，陪你过完这一天。</p>
+    <div class="meta"><span id="modeMeta"></span><span>Vivix W1</span><span>Sound on <span class="zh">请开声音</span></span></div>
+    <button class="cta" id="startBtn">Start <span class="zh">开始</span></button>
+  </section>
+  <div id="toast" hidden></div>
+</div>
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const Q = new URLSearchParams(location.search), K = Q.get('k') || '', MODE = Q.get('mode') || '5+10', PE = Q.get('pe') || undefined;
+const API = (Q.get('api') || location.origin).replace(/\/$/, '');  // v4.8b：页面放在 GitHub Pages 时，接口走 ?api= 给的隧道地址
+const OPEN_CUES = [{"s": 7.9, "e": 11.22, "zh": "今天不要上班，咪养你。", "en": "No work today. I'll take care of you.", "who": "Mii"}, {"s": 17.98, "e": 21.46, "zh": "啊对，今天休假。我忘关闹钟啦。", "en": "Oh, right. It's my day off. I forgot the alarm.", "who": "you"}];
+const pool = [$('va'), $('vb'), $('vc')]; let front = pool[0];
+const LOCAL = /^(127\.0\.0\.1|localhost)$/.test(location.hostname) && !Q.get('api');  // 公网链接：大文件走 CDN，不经过隧道
+const MEDIA = LOCAL ? {open: 'media/OPEN.mp4', idle: 'media/IDLE0.mp4', poster: 'media/poster.jpg', wait: 'audio/wait.mp3'}
+  : {open: 'https://lyx1265897416-lab.github.io/mii-takes-care-of-you/open-live/media/OPEN.mp4', idle: 'https://lyx1265897416-lab.github.io/mii-takes-care-of-you/open-live/media/IDLE0.mp4', poster: 'https://static.vivi-x.ai/images/2026/10/29/bc54bc323de338f9.jpg', wait: 'https://static.vivi-x.ai/audios/2026/10/29/9b5ebed5819347e7.mp3'};
+const AUD = {}; function preAudio(u){ if (u && u.startsWith('/')) u = API + u; if (u && !AUD[u]){ const a = new Audio(); a.preload = 'auto'; a.src = u; AUD[u] = a; } return AUD[u]; }
+const wait = new Audio(MEDIA.wait); wait.loop = true; wait.volume = 0;
+let waitTarget = 0; setInterval(() => { const d = waitTarget - wait.volume; if (Math.abs(d) > .01) wait.volume = Math.max(0, Math.min(1, wait.volume + Math.sign(d) * .03)); if (waitTarget === 0 && wait.volume < .02 && !wait.paused) wait.pause(); }, 50);
+const waitMusic = on => { waitTarget = on ? .3 : 0; if (on && wait.paused) wait.play().catch(() => {}); };
+let lang = 'zh'; try { lang = localStorage.getItem('mii-live-lang') || ((navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en'); } catch (e) {}
+if (location.hash === '#zh' || location.hash === '#en') lang = location.hash.slice(1);
+const applyLang = () => { document.body.classList.toggle('lang-en', lang === 'en'); $('mLangV').textContent = lang === 'en' ? 'English' : 'English + 中文'; };
+applyLang(); $('modeMeta').textContent = MODE.replace('+', ' s + ') + ' s';
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const setMode = m => { document.body.classList.remove('start', 'choosing', 'playing', 'waiting'); document.body.classList.add(m); };
+setMode('start');
+$('stage').style.background = `#000 url(${MEDIA.poster}) center/cover`;
+const chip = $('liveChip'); const setChip = h => { chip.innerHTML = h; chip.hidden = !h; };
+function toast(t){ const el = $('toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 2200); }
+const subs = $('subs');
+function showSub(c, who){ if (!c){ subs.innerHTML = ''; subs.classList.remove('you'); return; } subs.classList.toggle('you', who === 'you');
+  subs.innerHTML = (who ? `<div class="who">${who === 'you' ? 'You' : esc(who)}</div>` : '') + (c.en ? `<div class="en">${esc(c.en)}</div>` : '') + (c.zh ? `<div class="zh">${esc(c.zh)}</div>` : ''); }
+function placeSubs(){ subs.style.bottom = document.body.classList.contains('choosing') ? ($('sheet').offsetHeight + 14) + 'px' : ''; }
+addEventListener('resize', placeSubs);
+
+// 一个画面切到另一个：新的先盖上，再停旧的
+function show(el){ const old = front; front = el; el.classList.add('on'); const retire = () => { if (old !== front){ old.classList.remove('on'); old.pause(); } }; requestAnimationFrame(retire); setTimeout(retire, 60); }
+function spare(){ return pool.find(v => v !== front && !v.dataset.keep) || pool.find(v => v !== front); }
+function load(el, src, loop){ el.loop = !!loop; el.muted = !!loop; el.src = src; el.load(); }
+
+let sid = null, next = null, round = 0, busy = false;
+async function api(path, body){ const r = await fetch(API + path, {method: body ? 'POST' : 'GET', headers: body ? {'Content-Type': 'text/plain'} : {}, body: body ? JSON.stringify(Object.assign({k: K}, body)) : undefined}); const j = await r.json(); if (!r.ok) throw new Error(j.err || r.status); return j; }
+
+fetch(`${API}/api/ping?k=${encodeURIComponent(K)}`).then(r => r.json()).then(j => setChip(!j.ok ? '<b>口令不对</b> · 请用测试链接打开' : j.vivix_balance === 'insufficient' ? '<b>Vivix 余额不足</b> · 上一次提交被拒（10005），请先给 Vivix 工作区充值再测' : `<b>实时生成已连接</b> · ${esc(j.model)} · ${esc(MODE)} 并发 · 导演层 ${esc((j.director || '').split('/').pop())}`))
+  .catch(() => setChip('<b>实时生成没连上</b> · 本机中转没开'));
+
+// 开场
+const ov = pool[1]; load(ov, MEDIA.open); const idle = pool[2]; load(idle, MEDIA.idle, true);
+async function startSession(){ const j = await api('/api/session', {mode: MODE, pe: PE}); sid = j.sid; next = j.next; round = 0; }
+$('startBtn').onclick = async () => {
+  $('startCard').hidden = true; setMode('playing');
+  [pool[0], idle].forEach(v => { const p = v.play(); if (p) p.then(() => { if (v !== front) v.pause(); }).catch(() => {}); });  // 在这次点击里解锁
+  wait.play().then(() => { if (!waitTarget) wait.pause(); }).catch(() => {});
+  startSession().catch(e => setChip('<b>没开始成</b> · ' + esc(e.message)));
+  playOpening();
+};
+function playOpening(){
+  showSub(null); ov.currentTime = 0; ov.muted = false; ov.loop = false;
+  ov.play().then(() => show(ov)).catch(() => { show(ov); toast('点一下画面开始'); });
+  ov.ontimeupdate = () => { const t = ov.currentTime; const c = OPEN_CUES.find(q => t >= q.s && t <= q.e); showSub(c || null, c && c.who); };
+  ov.onended = () => { ov.ontimeupdate = null; idle.currentTime = 0; idle.play().catch(() => {}); show(idle); openChoice(); };
+}
+$('mRestart').onclick = () => { $('menu').hidden = true; closeChoice(); $('liveWait').hidden = true; liveRun++; busy = false; setMode('playing'); startSession().catch(() => {}); load(idle, MEDIA.idle, true); playOpening(); };
+$('menuBtn').onclick = () => { const m = $('menu'); m.hidden = !m.hidden; };
+$('mLang').onclick = () => { lang = lang === 'en' ? 'zh' : 'en'; try { localStorage.setItem('mii-live-lang', lang); } catch (e) {} applyLang(); };
+
+// 选择点：导演层上一轮给的两个选项 + 输入框
+const opt = o => `<span class="en">${esc(o.en)}</span><span class="zh">${esc(o.zh)}</span>`;
+async function openChoice(){
+  setMode('choosing'); $('shade').classList.add('deep'); waitMusic(true);
+  for (let i = 0; i < 100 && !next; i++) await new Promise(r => setTimeout(r, 100));
+  if (!next){ setChip('<b>没拿到选项</b> · 本机中转没响应'); return; }
+  $('rno').textContent = `Scene ${round + 1} · 第 ${round + 1} 幕`;
+  $('cue').innerHTML = `${esc(next.cue.en)}<span class="zh">${esc(next.cue.zh)}</span>`;
+  $('optA').innerHTML = opt(next.A); $('optB').innerHTML = opt(next.B);
+  $('optA').onclick = () => liveRound('option', 'A', next.A); $('optB').onclick = () => liveRound('option', 'B', next.B);
+  $('sayIn').value = ''; $('sayBtn').disabled = false;
+  setTimeout(() => { $('sheet').classList.add('show'); placeSubs(); }, 150);
+}
+function closeChoice(){ $('sheet').classList.remove('show'); subs.style.bottom = ''; $('shade').classList.remove('deep'); }
+$('say').addEventListener('submit', e => { e.preventDefault(); const raw = $('sayIn').value.trim(); if (!raw || busy) return; liveRound('free', null, {zh: raw, en: raw}); });
+
+// 一轮：发出去 → 等导演层和两段生成 → 两段都好、都缓冲好 → 一次连续播完 → 下一个选择点
+let liveRun = 0;
+async function liveRound(kind, choice, said){
+  if (busy) return; busy = true; const my = ++liveRun, t0 = Date.now(); let r = null, rid = null;
+  closeChoice(); setMode('waiting'); waitMusic(true); showSub(null);
+  const herLine = lang === 'en' ? (said.en || said.zh) : (said.zh || said.en);
+  $('lwH').textContent = '你：' + herLine;
+  const phase = () => !r ? '发送中…' : r.status === 'submitted' ? (kind === 'option' ? '读取这个选项预先写好的分镜…' : '导演层在写咪的回应…') : r.status === 'error' ? '生成失败' : `两段同时生成中（${r.mode.replace('+', ' 秒 + ')} 秒）· 已完成 ${(r.segs || []).filter(s => s.url).length}/${(r.segs || []).length || 2}`;
+  const hold = (label, cond) => new Promise(res => { $('liveWait').hidden = false; (function f(){ if (my !== liveRun) return; $('lwT').textContent = ((Date.now() - t0) / 1000).toFixed(1); $('lwS').textContent = label || phase(); if (cond()){ res(); } else setTimeout(f, 100); })(); });
+  try { rid = (await api('/api/round', {sid, kind, choice, input: kind === 'free' ? said.zh : undefined})).id; }
+  catch (e){ $('liveWait').hidden = true; busy = false; setChip('<b>没发出去</b> · ' + esc(e.message)); toast('实时生成不可用'); openChoice(); return; }
+  const V = [spare()]; V[0].dataset.keep = 1; V.push(spare()); delete V[0].dataset.keep;  // 15 秒整段只用 V[0]
+  let polling = true; const poll = 0;  // 上一次返回后再发下一次（公网隧道每次约 1.4 秒，定时器会把请求堆起来）
+  (async function tick(){ while (polling){
+    try { r = await api(`/api/round/${rid}?k=${encodeURIComponent(K)}`); } catch (e) {}
+    if (r && r.segs) r.segs.forEach((s, i) => { if (s.url && V[i].dataset.src !== s.url){ V[i].dataset.src = s.url; load(V[i], s.url); } });  // 一到就预载
+    if (r && r.lines) r.lines.forEach(l => preAudio(l.audio));  // 配音也一出来就预载
+    await new Promise(res => setTimeout(res, LOCAL ? 500 : 1200)); } })();
+  const both = () => r && r.segs && r.segs.every(s => s.url || s.status === 'error');
+  await hold(null, () => both() || (r && r.status === 'error'));
+  if (my !== liveRun){ polling = false; return; }
+  const view = {};
+  if (r.segs && r.segs.every(s => s.url)){
+    const t1 = Date.now();  // 两段都缓冲到能连续播放（最多等 6 秒）
+    await hold('马上开始…', () => V.every(v => v.readyState >= 4) || Date.now() - t1 > 6000);
+    view.buffer = (Date.now() - t1) / 1000; $('liveWait').hidden = true; waitMusic(false); setMode('playing');
+    view.play_at = Date.now(); await play(0); view.seg1_end = Date.now();
+    if (r.segs.length > 1){ await play(1); view.stall = Math.max(0, (Date.now() - view.seg1_end) / 1000 - (V[1].duration || 10)); } else view.stall = 0;
+  }
+  polling = false; view.end_at = Date.now(); $('liveWait').hidden = true;
+  if (rid) api(`/api/round/${rid}/view`, view).catch(() => {});
+  const gen = r.segs && r.segs.every(s => s.ready_at) ? Math.max(...r.segs.map(s => s.ready_at - r.director_at)) / 1000 : null;
+  const dir = r.director_at ? (r.director_at - r.at) / 1000 : null;
+  busy = false;
+  if (!view.play_at){ const low = (r.segs || []).some(s => s.err_code === 10005); setChip(low ? '<b>Vivix 余额不足</b> · 这一轮没有生成（10005）。给 Vivix 工作区充值后，直接在这里重新点选项或发送即可' : `<b>这一轮失败</b> · ${esc((r.segs || []).map(s => s.err).filter(Boolean)[0] || r.err || '')} · 可以再选一次`); if (low) toast('Vivix 余额不足'); openChoice(); return; }
+  setChip(`<b>第 ${round + 1} 幕</b> · 发送到开播 ${((view.play_at - t0) / 1000).toFixed(1)}s（导演层 ${dir == null ? '—' : dir.toFixed(1)}s${r.director === 'prefetched' ? ' 预写' : ''} ＋ 两段生成 ${gen == null ? '—' : gen.toFixed(1)}s ＋ 缓冲 ${(view.buffer || 0).toFixed(1)}s）· 连续播放 ${((V[0].duration || 0) + (V[1].duration || 0)).toFixed(0)}s`);
+  round++; next = r.next || next; openChoice();
+
+  function play(i){ return new Promise(res => {
+    // 咪的台词是另配的 A 声线（视频里咪不开口）：第 1 段开播 0.4 秒起、第 2 段 1 秒起逐句播放，句间 0.4 秒，字幕跟着当前这句走
+    const v = V[i], L = (r.lines || []).filter(l => l.seg === i + 1);
+    v.currentTime = 0; v.muted = false; v.loop = false; v.volume = 0.6; let done = false, k = -1, cur = null, nextAt = i === 0 ? 0.4 : 1.0;
+    const say = () => { k++; if (k >= L.length){ cur = null; return; } const l = L[k]; showSub({en: l.en, zh: l.zh}, 'Mii');
+      if (l.audio){ cur = preAudio(l.audio); cur.currentTime = 0; cur.onended = () => { showSub(null); nextAt = v.currentTime + 0.4; cur = null; }; cur.play().catch(() => { cur = null; nextAt = v.currentTime + 2.2; }); }
+      else { cur = null; nextAt = v.currentTime + 2.4; } };
+    const end = () => { if (done) return; done = true; v.ontimeupdate = null; if (cur){ cur.onended = null; } showSub(null); res(); };
+    v.ontimeupdate = () => { if (my !== liveRun){ end(); return; } const d = v.duration || r.segs[i].seconds;
+      if (!cur && k < L.length - 1 && v.currentTime >= Math.max(nextAt, L[k + 1].at || 0)) say();
+      if (d && v.currentTime >= d - 0.06) end(); };
+    v.onended = end; v.onerror = end;
+    v.play().then(() => show(v)).catch(() => { v.muted = true; v.play().then(() => show(v)).catch(end); });
+  }); }
+}
+})();
+</script>
