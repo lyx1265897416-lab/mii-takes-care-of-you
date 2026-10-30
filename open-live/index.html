@@ -280,7 +280,8 @@ async function liveRound(kind, choice, said){
       if (l.audio){ cur = preAudio(l.audio); cur.currentTime = 0; cur.onended = () => { showSub(null); nextAt = v.currentTime + 0.4; cur = null; }; cur.play().catch(() => { cur = null; nextAt = v.currentTime + 2.2; }); }
       else { cur = null; nextAt = v.currentTime + 2.4; } };
     const end = () => { if (done) return; done = true; v.ontimeupdate = null; if (cur){ cur.onended = null; } showSub(null); res(); };
-    v.ontimeupdate = () => { if (my !== liveRun){ end(); return; } const d = v.duration || r.segs[i].seconds;
+    v.ontimeupdate = () => { if (my !== liveRun){ end(); return; } const d = Math.min(v.duration || r.segs[i].seconds, r.segs[i].cut_at || 1e9);  // v4.17：结尾变成画中画时提前收尾
+     
       if (!cur && k < L.length - 1 && v.currentTime >= Math.max(nextAt, L[k + 1].at || 0)) say();
       if (d && v.currentTime >= d - 0.06) end(); };
     v.onended = end; v.onerror = end;
