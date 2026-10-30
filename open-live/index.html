@@ -223,14 +223,14 @@ async function openChoice(){
 function closeChoice(){ $('sheet').classList.remove('show'); subs.style.bottom = ''; $('shade').classList.remove('deep'); }
 $('say').addEventListener('submit', e => { e.preventDefault(); const raw = $('sayIn').value.trim(); if (!raw || busy) return; liveRound('free', null, {zh: raw, en: raw}); });
 
-// 一轮：发出去 → 等导演层和两段生成 → 两段都好、都缓冲好 → 一次连续播完 → 下一个选择点
+// 一轮：发出去 → 导演层 → 两段同时生成 → 第 1 段按第 2 段预计出片时间倒推开播（v4.12）→ 两段接着播完 → 下一个选择点
 let liveRun = 0;
 async function liveRound(kind, choice, said){
   if (busy) return; busy = true; const my = ++liveRun, t0 = Date.now(); let r = null, rid = null;
   closeChoice(); setMode('waiting'); waitMusic(true); showSub(null);
   const herLine = lang === 'en' ? (said.en || said.zh) : (said.zh || said.en);
   $('lwH').textContent = '你：' + herLine;
-  const phase = () => !r ? '发送中…' : r.status === 'submitted' ? (kind === 'option' ? '读取这个选项预先写好的分镜…' : '导演层在写咪的回应…') : r.status === 'error' ? '生成失败' : `两段同时生成中（${r.mode.replace('+', ' 秒 + ')} 秒）· 已完成 ${(r.segs || []).filter(s => s.url).length}/${(r.segs || []).length || 2}`;
+  const phase = () => !r ? '发送中…' : r.status === 'submitted' ? (kind === 'option' ? '读取这个选项预先写好的分镜…' : '导演层在写咪的回应…') : r.status === 'error' ? '生成失败' : (r.segs && r.segs[0] && r.segs[0].url && r.segs[1] && !r.segs[1].url) ? `第 1 段好了 · 第 2 段${r.segs[1].eta_left == null ? '在准备首尾帧' : `约 ${r.segs[1].eta_left.toFixed(0)} 秒后好`}，算好时间开播，两段接着播` : `两段同时生成中（${r.mode.replace('+', ' 秒 + ')} 秒）· 已完成 ${(r.segs || []).filter(s => s.url).length}/${(r.segs || []).length || 2}`;
   const hold = (label, cond) => new Promise(res => { $('liveWait').hidden = false; (function f(){ if (my !== liveRun) return; $('lwT').textContent = ((Date.now() - t0) / 1000).toFixed(1); $('lwS').textContent = label || phase(); if (cond()){ res(); } else setTimeout(f, 100); })(); });
   try { rid = (await api('/api/round', {sid, kind, choice, input: kind === 'free' ? said.zh : undefined})).id; }
   catch (e){ $('liveWait').hidden = true; busy = false; setChip('<b>没发出去</b> · ' + esc(e.message)); toast('实时生成不可用'); openChoice(); return; }
@@ -241,31 +241,42 @@ async function liveRound(kind, choice, said){
     if (r && r.segs) r.segs.forEach((s, i) => { if (s.url && V[i].dataset.src !== s.url){ V[i].dataset.src = s.url; load(V[i], s.url); } });  // 一到就预载
     if (r && r.lines) r.lines.forEach(l => preAudio(l.audio));  // 配音也一出来就预载
     await new Promise(res => setTimeout(res, LOCAL ? 500 : 1200)); } })();
-  const both = () => r && r.segs && r.segs.every(s => s.url || s.status === 'error');
-  await hold(null, () => both() || (r && r.status === 'error'));
+  // v4.12 提速：第 1 段不等第 2 段出片——按第 2 段的预计出片时间（中转给的 eta_left）倒推开播，第 1 段播完正好接上第 2 段
+  const M = LOCAL ? 1.5 : 3.0;  // 轮询间隔、隧道延迟和第 2 段缓冲的余量（秒）
+  const aud = k => !(r.lines || []).some(l => l.seg === k && !l.audio && !l.audio_err);  // 这一段的配音都到了（或确定没有）
+  const segErr = () => r && r.segs && r.segs.some(s => s.status === 'error');
+  const seg1Ok = () => r && r.segs && r.segs[0] && r.segs[0].url && V[0].dataset.src === r.segs[0].url && V[0].readyState >= 3;
+  let vidAt = 0;  // 画面可以开播的时刻：配音晚到超过 6 秒就先播（字幕照出，配音到了再补上），不让配音挡住画面
+  const voiced = () => (aud(1) && aud(2)) || (vidAt && Date.now() - vidAt > 6000);
+  const seg2Soon = () => { const s2 = r.segs[1]; if (!s2 || s2.url) return true; const d1 = V[0].duration || r.segs[0].dur || 5; return s2.eta_left != null && s2.eta_left <= d1 - M; };
+  await hold(null, () => (r && r.status === 'error') || segErr() || (seg1Ok() && seg2Soon() && (vidAt = vidAt || Date.now()) && voiced()));
   if (my !== liveRun){ polling = false; return; }
   const view = {};
-  if (r.segs && r.segs.every(s => s.url)){
-    const t1 = Date.now();  // 两段都缓冲到能连续播放（最多等 6 秒）
-    await hold('马上开始…', () => V.every(v => v.readyState >= 4) || Date.now() - t1 > 6000);
-    view.buffer = (Date.now() - t1) / 1000; $('liveWait').hidden = true; waitMusic(false); setMode('playing');
-    view.play_at = Date.now(); await play(0); view.seg1_end = Date.now();
-    if (r.segs.length > 1){ await play(1); view.stall = Math.max(0, (Date.now() - view.seg1_end) / 1000 - (V[1].duration || 10)); } else view.stall = 0;
+  if (!segErr() && r.status !== 'error'){
+    $('liveWait').hidden = true; waitMusic(false); setMode('playing');
+    view.play_at = Date.now(); view.seg2_eta = r.segs[1] ? r.segs[1].eta_left : null;
+    await play(0); view.seg1_end = Date.now();
+    if (r.segs.length > 1){
+      const ok2 = () => segErr() || (r.segs[1].url && V[1].dataset.src === r.segs[1].url && V[1].readyState >= 3);  // 配音不挡接缝（开播前已经等过）
+      if (!ok2()){ waitMusic(true); while (!ok2() && my === liveRun) await new Promise(res => setTimeout(res, 100)); waitMusic(false); }  // 第 2 段还没到：停在第 1 段最后一帧
+      view.stall = (Date.now() - view.seg1_end) / 1000;
+      if (my === liveRun && !segErr()) await play(1);
+    } else view.stall = 0;
   }
   polling = false; view.end_at = Date.now(); $('liveWait').hidden = true;
   if (rid) api(`/api/round/${rid}/view`, view).catch(() => {});
   const gen = r.segs && r.segs.every(s => s.ready_at) ? Math.max(...r.segs.map(s => s.ready_at - r.director_at)) / 1000 : null;
   const dir = r.director_at ? (r.director_at - r.at) / 1000 : null;
   busy = false;
-  if (!view.play_at){ const low = (r.segs || []).some(s => s.err_code === 10005); setChip(low ? '<b>Vivix 余额不足</b> · 这一轮没有生成（10005）。给 Vivix 工作区充值后，直接在这里重新点选项或发送即可' : `<b>这一轮失败</b> · ${esc((r.segs || []).map(s => s.err).filter(Boolean)[0] || r.err || '')} · 可以再选一次`); if (low) toast('Vivix 余额不足'); openChoice(); return; }
-  setChip(`<b>第 ${round + 1} 幕</b> · 发送到开播 ${((view.play_at - t0) / 1000).toFixed(1)}s（导演层 ${dir == null ? '—' : dir.toFixed(1)}s${r.director === 'prefetched' ? ' 预写' : ''} ＋ 两段生成 ${gen == null ? '—' : gen.toFixed(1)}s ＋ 缓冲 ${(view.buffer || 0).toFixed(1)}s）· 连续播放 ${((V[0].duration || 0) + (V[1].duration || 0)).toFixed(0)}s`);
+  if (!view.play_at || segErr()){ const low = (r.segs || []).some(s => s.err_code === 10005); setChip(low ? '<b>Vivix 余额不足</b> · 这一轮没有生成（10005）。给 Vivix 工作区充值后，直接在这里重新点选项或发送即可' : `<b>这一轮失败</b> · ${esc((r.segs || []).map(s => s.err).filter(Boolean)[0] || r.err || '')} · 可以再选一次`); if (low) toast('Vivix 余额不足'); openChoice(); return; }
+  setChip(`<b>第 ${round + 1} 幕</b> · 发送到开播 ${((view.play_at - t0) / 1000).toFixed(1)}s（导演层 ${dir == null ? '—' : dir.toFixed(1)}s${r.director === 'prefetched' ? ' 预写' : ''} ＋ 第 1 段 ${r.segs[0].ready_at ? ((r.segs[0].ready_at - r.director_at) / 1000).toFixed(1) : '—'}s，第 2 段 ${gen == null ? '—' : gen.toFixed(1)}s）· 两段接缝停顿 ${(view.stall || 0).toFixed(1)}s`);
   round++; next = r.next || next; openChoice();
 
   function play(i){ return new Promise(res => {
     // 咪的台词是另配的 A 声线（视频里咪不开口）：第 1 段开播 0.4 秒起、第 2 段 1 秒起逐句播放，句间 0.4 秒，字幕跟着当前这句走
     const v = V[i], L = (r.lines || []).filter(l => l.seg === i + 1);
     v.currentTime = 0; v.muted = false; v.loop = false; v.volume = 0.6; let done = false, k = -1, cur = null, nextAt = i === 0 ? 0.4 : 1.0;
-    const say = () => { k++; if (k >= L.length){ cur = null; return; } const l = L[k]; showSub({en: l.en, zh: l.zh}, 'Mii');
+    const say = () => { k++; if (k >= L.length){ cur = null; return; } const l = (r.lines || []).find(x => x.seg === L[k].seg && x.en === L[k].en) || L[k]; showSub({en: l.en, zh: l.zh}, 'Mii');  // 用最新一次轮询的台词：晚到的配音也能播上
       if (l.audio){ cur = preAudio(l.audio); cur.currentTime = 0; cur.onended = () => { showSub(null); nextAt = v.currentTime + 0.4; cur = null; }; cur.play().catch(() => { cur = null; nextAt = v.currentTime + 2.2; }); }
       else { cur = null; nextAt = v.currentTime + 2.4; } };
     const end = () => { if (done) return; done = true; v.ontimeupdate = null; if (cur){ cur.onended = null; } showSub(null); res(); };
