@@ -211,8 +211,8 @@ $('mLang').onclick = () => { lang = lang === 'en' ? 'zh' : 'en'; try { localStor
 const opt = o => `<span class="en">${esc(o.en)}</span><span class="zh">${esc(o.zh)}</span>`;
 async function openChoice(){
   setMode('choosing'); $('shade').classList.add('deep'); waitMusic(true);
-  for (let i = 0; i < 100 && !next; i++) await new Promise(r => setTimeout(r, 100));
-  if (!next){ setChip('<b>没拿到选项</b> · 本机中转没响应'); return; }
+  for (let i = 0; i < 300 && !next; i++){ if (i % 30 === 29){ setChip('<b>正在连接实时服务…</b> · 自动重试中'); startSession().catch(() => {}); } await new Promise(r => setTimeout(r, 100)); }  // 服务刚重启时自动重试 30 秒
+  if (!next){ setChip('<b>实时服务没连上</b> · 测试链接可能已更新，或服务在重启，请稍后刷新；还不行请找 Vicky 要新链接'); return; }
   $('rno').textContent = `Scene ${round + 1} · 第 ${round + 1} 幕`;
   $('cue').innerHTML = `${esc(next.cue.en)}<span class="zh">${esc(next.cue.zh)}</span>`;
   $('optA').innerHTML = opt(next.A); $('optB').innerHTML = opt(next.B);
