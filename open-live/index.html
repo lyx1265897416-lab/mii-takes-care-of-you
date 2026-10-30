@@ -149,7 +149,7 @@ body.lang-en .zh{display:none!important}
 <script>
 (() => {
 const $ = id => document.getElementById(id);
-const Q = new URLSearchParams(location.search), K = Q.get('k') || '', MODE = Q.get('mode') || '5+10', PE = Q.get('pe') || undefined;
+const Q = new URLSearchParams(location.search), K = Q.get('k') || '', MODE = Q.get('mode') || 'auto', PE = Q.get('pe') || undefined;
 const API = (Q.get('api') || location.origin).replace(/\/$/, '');  // v4.8b：页面放在 GitHub Pages 时，接口走 ?api= 给的隧道地址
 const OPEN_CUES = [{"s": 7.9, "e": 11.22, "zh": "今天不要上班，咪养你。", "en": "No work today. I'll take care of you.", "who": "Mii"}, {"s": 17.98, "e": 21.46, "zh": "啊对，今天休假。我忘关闹钟啦。", "en": "Oh, right. It's my day off. I forgot the alarm.", "who": "you"}];
 const pool = [$('va'), $('vb'), $('vc')]; let front = pool[0];
@@ -163,7 +163,7 @@ const waitMusic = on => { waitTarget = on ? .3 : 0; if (on && wait.paused) wait.
 let lang = 'zh'; try { lang = localStorage.getItem('mii-live-lang') || ((navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en'); } catch (e) {}
 if (location.hash === '#zh' || location.hash === '#en') lang = location.hash.slice(1);
 const applyLang = () => { document.body.classList.toggle('lang-en', lang === 'en'); $('mLangV').textContent = lang === 'en' ? 'English' : 'English + 中文'; };
-applyLang(); $('modeMeta').textContent = MODE.replace('+', ' s + ') + ' s';
+applyLang(); $('modeMeta').textContent = MODE === 'auto' ? 'Auto length' : MODE.replace('+', ' s + ') + ' s';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const setMode = m => { document.body.classList.remove('start', 'choosing', 'playing', 'waiting'); document.body.classList.add(m); };
 setMode('start');
@@ -269,7 +269,7 @@ async function liveRound(kind, choice, said){
   const dir = r.director_at ? (r.director_at - r.at) / 1000 : null;
   busy = false;
   if (!view.play_at || segErr()){ const low = (r.segs || []).some(s => s.err_code === 10005); setChip(low ? '<b>Vivix 余额不足</b> · 这一轮没有生成（10005）。给 Vivix 工作区充值后，直接在这里重新点选项或发送即可' : `<b>这一轮失败</b> · ${esc((r.segs || []).map(s => s.err).filter(Boolean)[0] || r.err || '')} · 可以再选一次`); if (low) toast('Vivix 余额不足'); openChoice(); return; }
-  setChip(`<b>第 ${round + 1} 幕</b> · 发送到开播 ${((view.play_at - t0) / 1000).toFixed(1)}s（导演层 ${dir == null ? '—' : dir.toFixed(1)}s${r.director === 'prefetched' ? ' 预写' : ''} ＋ 第 1 段 ${r.segs[0].ready_at ? ((r.segs[0].ready_at - r.director_at) / 1000).toFixed(1) : '—'}s，第 2 段 ${gen == null ? '—' : gen.toFixed(1)}s）· 两段接缝停顿 ${(view.stall || 0).toFixed(1)}s`);
+  setChip(`<b>第 ${round + 1} 幕</b> · ${esc(r.mode)} · 发送到开播 ${((view.play_at - t0) / 1000).toFixed(1)}s（导演层 ${dir == null ? '—' : dir.toFixed(1)}s${r.director === 'prefetched' ? ' 预写' : ''} ＋ 第 1 段 ${r.segs[0].ready_at ? ((r.segs[0].ready_at - r.director_at) / 1000).toFixed(1) : '—'}s，第 2 段 ${gen == null ? '—' : gen.toFixed(1)}s）· 两段接缝停顿 ${(view.stall || 0).toFixed(1)}s`);
   round++; next = r.next || next; openChoice();
 
   function play(i){ return new Promise(res => {
