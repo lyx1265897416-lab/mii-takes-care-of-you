@@ -247,7 +247,7 @@ async function liveRound(kind, choice, said){
   const segErr = () => r && r.segs && r.segs.some(s => s.status === 'error');
   const seg1Ok = () => r && r.segs && r.segs[0] && r.segs[0].url && V[0].dataset.src === r.segs[0].url && V[0].readyState >= 3;
   let vidAt = 0;  // 画面可以开播的时刻：配音晚到超过 6 秒就先播（字幕照出，配音到了再补上），不让配音挡住画面
-  const voiced = () => (aud(1) && aud(2)) || (vidAt && Date.now() - vidAt > 6000);
+  const voiced = () => aud(1) || (vidAt && Date.now() - vidAt > 4000);  // v4.14：只等第 1 段的配音（第 2 段的配音 5 秒后才用，到了会自动用上）
   const seg2Soon = () => { const s2 = r.segs[1]; if (!s2 || s2.url) return true; const d1 = V[0].duration || r.segs[0].dur || 5; return s2.eta_left != null && s2.eta_left <= d1 - M; };
   await hold(null, () => (r && r.status === 'error') || segErr() || (seg1Ok() && seg2Soon() && (vidAt = vidAt || Date.now()) && voiced()));
   if (my !== liveRun){ polling = false; return; }
@@ -276,7 +276,7 @@ async function liveRound(kind, choice, said){
     // 咪的台词是另配的 A 声线（视频里咪不开口）：第 1 段开播 0.4 秒起、第 2 段 1 秒起逐句播放，句间 0.4 秒，字幕跟着当前这句走
     const v = V[i], L = (r.lines || []).filter(l => l.seg === i + 1);
     v.currentTime = 0; v.muted = false; v.loop = false; v.volume = 0.6; let done = false, k = -1, cur = null, nextAt = i === 0 ? 0.4 : 1.0;
-    const say = () => { k++; if (k >= L.length){ cur = null; return; } const l = (r.lines || []).find(x => x.seg === L[k].seg && x.en === L[k].en) || L[k]; showSub({en: l.en, zh: l.zh}, 'Mii');  // 用最新一次轮询的台词：晚到的配音也能播上
+    const say = () => { k++; if (k >= L.length){ cur = null; return; } const l = (r.lines || []).find(x => x.seg === L[k].seg && x.en === L[k].en) || L[k]; showSub({en: l.en, zh: l.zh}, l.who || 'Mii');  // 用最新一次轮询的台词：晚到的配音也能播上
       if (l.audio){ cur = preAudio(l.audio); cur.currentTime = 0; cur.onended = () => { showSub(null); nextAt = v.currentTime + 0.4; cur = null; }; cur.play().catch(() => { cur = null; nextAt = v.currentTime + 2.2; }); }
       else { cur = null; nextAt = v.currentTime + 2.4; } };
     const end = () => { if (done) return; done = true; v.ontimeupdate = null; if (cur){ cur.onended = null; } showSub(null); res(); };
