@@ -126,7 +126,7 @@ body.lang-en .zh{display:none!important}
   <div id="liveChip" hidden></div>
   <div id="subs" aria-live="polite"></div>
   <section id="sheet" aria-label="Your choice">
-    <div class="rno" id="rno"></div>
+    <div class="rno"><span id="rno"></span><button id="replayBtn" type="button" hidden style="background:none;border:1px solid rgba(255,255,255,.22);border-radius:999px;color:#e8e8e8;font-size:11px;padding:3px 10px;margin-left:10px;cursor:pointer"></button></div>
     <div class="cue" id="cue"></div>
     <button class="opt" id="optA"></button>
     <button class="opt" id="optB"></button>
@@ -139,13 +139,14 @@ body.lang-en .zh{display:none!important}
   <section class="card" id="startCard">
     <div class="kicker">Live interactive · 实时互动测试</div>
     <h1>No work today. <em>Mii’s got you.</em></h1>
-    <p>Only the opening is pre-made. After that, every scene is generated live from what you choose or tell Mii, all day long.</p>
-    <p class="zh">只有开场是预制的。之后每一段都根据你的选择或你对咪说的话实时生成，陪你过完这一天。</p>
+    <p>How the day goes from here is up to how you play it. Tap a choice, or just tell Mii what you want to do.</p>
+    <p class="zh">这一天接下来怎么过，就看你怎么演了。点选项，或者直接告诉咪你想做什么。</p>
     <div class="meta"><span id="modeMeta"></span><span>Vivix W1</span><span>Sound on <span class="zh">请开声音</span></span></div>
     <button class="cta" id="startBtn">Start <span class="zh">开始</span></button>
   </section>
   <div id="toast" hidden></div>
 </div>
+<script src="rt-player.js?v=2"></script>
 <script>
 (() => {
 const $ = id => document.getElementById(id);
@@ -166,6 +167,7 @@ const applyLang = () => { document.body.classList.toggle('lang-en', lang === 'en
 applyLang(); $('modeMeta').textContent = MODE === 'auto' ? 'Auto length' : MODE.replace('+', ' s + ') + ' s';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const setMode = m => { document.body.classList.remove('start', 'choosing', 'playing', 'waiting'); document.body.classList.add(m); };
+RT.init({drama: 'mii-open', zh: () => lang === 'zh'}); RT.setVoices(() => Object.values(AUD));
 setMode('start');
 $('stage').style.background = `#000 url(${MEDIA.poster}) center/cover`;
 const chip = $('liveChip'); const setChip = h => { chip.innerHTML = h; chip.hidden = !h; };
@@ -197,11 +199,13 @@ $('startBtn').onclick = async () => {
   startSession().catch(e => setChip('<b>没开始成</b> · ' + esc(e.message)));
   playOpening();
 };
+let replayFn = null;
 function playOpening(){
+  RT.begin({key: 'OPEN', parts: [{v: ov}]}); replayFn = playOpening;
   showSub(null); ov.currentTime = 0; ov.muted = false; ov.loop = false;
   ov.play().then(() => show(ov)).catch(() => { show(ov); toast('点一下画面开始'); });
   ov.ontimeupdate = () => { const t = ov.currentTime; const c = OPEN_CUES.find(q => t >= q.s && t <= q.e); showSub(c || null, c && c.who); };
-  ov.onended = () => { ov.ontimeupdate = null; idle.currentTime = 0; idle.play().catch(() => {}); show(idle); openChoice(); };
+  ov.onended = () => { RT.done('OPEN'); RT.clear(); ov.ontimeupdate = null; idle.currentTime = 0; idle.play().catch(() => {}); show(idle); openChoice(); };
 }
 $('mRestart').onclick = () => { $('menu').hidden = true; closeChoice(); $('liveWait').hidden = true; liveRun++; busy = false; setMode('playing'); startSession().catch(() => {}); load(idle, MEDIA.idle, true); playOpening(); };
 $('menuBtn').onclick = () => { const m = $('menu'); m.hidden = !m.hidden; };
@@ -210,6 +214,7 @@ $('mLang').onclick = () => { lang = lang === 'en' ? 'zh' : 'en'; try { localStor
 // 选择点：导演层上一轮给的两个选项 + 输入框
 const opt = o => `<span class="en">${esc(o.en)}</span><span class="zh">${esc(o.zh)}</span>`;
 async function openChoice(){
+  RT.clear(); $('replayBtn').hidden = !replayFn; $('replayBtn').textContent = lang === 'zh' ? '↺ 重看这一段' : '↺ Replay';
   setMode('choosing'); $('shade').classList.add('deep'); waitMusic(true);
   for (let i = 0; i < 300 && !next; i++){ if (i % 30 === 29){ setChip('<b>正在连接实时服务…</b> · 自动重试中'); startSession().catch(() => {}); } await new Promise(r => setTimeout(r, 100)); }  // 服务刚重启时自动重试 30 秒
   if (!next){ setChip('<b>实时服务没连上</b> · 测试链接可能已更新，或服务在重启，请稍后刷新；还不行请找 Vicky 要新链接'); return; }
@@ -220,6 +225,7 @@ async function openChoice(){
   $('sayIn').value = ''; $('sayBtn').disabled = false;
   setTimeout(() => { $('sheet').classList.add('show'); placeSubs(); }, 150);
 }
+$('replayBtn').onclick = () => { if (!replayFn || busy) return; closeChoice(); waitMusic(false); setMode('playing'); replayFn(); };
 function closeChoice(){ $('sheet').classList.remove('show'); subs.style.bottom = ''; $('shade').classList.remove('deep'); }
 $('say').addEventListener('submit', e => { e.preventDefault(); const raw = $('sayIn').value.trim(); if (!raw || busy) return; liveRound('free', null, {zh: raw, en: raw}); });
 
@@ -254,13 +260,13 @@ async function liveRound(kind, choice, said){
   const view = {};
   if (!segErr() && r.status !== 'error'){
     $('liveWait').hidden = true; waitMusic(false); setMode('playing');
-    view.play_at = Date.now(); view.seg2_eta = r.segs[1] ? r.segs[1].eta_left : null;
+    RT.begin({key: 'round:' + rid, parts: r.segs.map((x, i) => ({v: V[i], d: x.dur || x.seconds})), label: lang === 'zh' ? `第 ${round + 1} 幕` : `Scene ${round + 1}`}); RT.part(0); view.play_at = Date.now(); view.seg2_eta = r.segs[1] ? r.segs[1].eta_left : null;
     await play(0); view.seg1_end = Date.now();
     if (r.segs.length > 1){
       const ok2 = () => segErr() || (r.segs[1].url && V[1].dataset.src === r.segs[1].url && V[1].readyState >= 3);  // 配音不挡接缝（开播前已经等过）
       if (!ok2()){ waitMusic(true); while (!ok2() && my === liveRun) await new Promise(res => setTimeout(res, 100)); waitMusic(false); }  // 第 2 段还没到：停在第 1 段最后一帧
       view.stall = (Date.now() - view.seg1_end) / 1000;
-      if (my === liveRun && !segErr()) await play(1);
+      if (my === liveRun && !segErr()) { RT.part(1); await play(1); RT.done('round:' + rid); }
     } else view.stall = 0;
   }
   polling = false; view.end_at = Date.now(); $('liveWait').hidden = true;
@@ -270,6 +276,8 @@ async function liveRound(kind, choice, said){
   busy = false;
   if (!view.play_at || segErr()){ const low = (r.segs || []).some(s => s.err_code === 10005); setChip(low ? '<b>Vivix 余额不足</b> · 这一轮没有生成（10005）。给 Vivix 工作区充值后，直接在这里重新点选项或发送即可' : `<b>这一轮失败</b> · ${esc((r.segs || []).map(s => s.err).filter(Boolean)[0] || r.err || '')} · 可以再选一次`); if (low) toast('Vivix 余额不足'); openChoice(); return; }
   setChip(`<b>第 ${round + 1} 幕</b> · ${esc(r.mode)} · 发送到开播 ${((view.play_at - t0) / 1000).toFixed(1)}s（导演层 ${dir == null ? '—' : dir.toFixed(1)}s${r.director === 'prefetched' ? ' 预写' : ''} ＋ 第 1 段 ${r.segs[0].ready_at ? ((r.segs[0].ready_at - r.director_at) / 1000).toFixed(1) : '—'}s，第 2 段 ${gen == null ? '—' : gen.toFixed(1)}s）· 两段接缝停顿 ${(view.stall || 0).toFixed(1)}s`);
+  const sceneNo = round + 1;
+  replayFn = async () => { RT.begin({key: 'round:' + rid, free: true, parts: r.segs.map((x, i) => ({v: V[i], d: x.dur || x.seconds})), label: lang === 'zh' ? `第 ${sceneNo} 幕` : `Scene ${sceneNo}`}); RT.part(0); await play(0); if (r.segs.length > 1){ RT.part(1); await play(1); } RT.clear(); openChoice(); };
   round++; next = r.next || next; openChoice();
 
   function play(i){ return new Promise(res => {
