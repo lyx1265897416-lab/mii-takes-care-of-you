@@ -3,6 +3,9 @@
    回看时画面上有「回到现在」，看完自动回到现在；新的一幕生成好要开播时，回看自动关掉。
    不改各页面的 rt-player.js：在它后面加载，包住 RT.begin / part / done / clear 记下每一幕的片段地址和台词。
    页面可选地在 RT.begin 里多传 hist：{r: 这一轮中转返回的对象（用它的 line_times / lines / zh / segs.flip 出字幕和镜像）, her: 她这一轮说的话, cues: 开场字幕 [{s,e,en,zh,who}]}。
+   V2（11-05 晚，Vicky：回看前面的幕一直黑屏加载不出来）：回看原来新建播放器、重新从视频 CDN 下载，她的网络到 Vivix 首包 14–17 秒、速度只够实时，
+   黑屏很久。改成：一幕播完后，在她选选项、等生成的空档里，用不进画面的“留存播放器”静音慢放把这一幕下完（正在下载直播段时让路），
+   回看直接用留存播放器（已缓冲，立刻出画面）；最近 KEEP 幕留存，更早的释放。没下完的回看先显示“加载中 xx%”，缓冲够了再播，不黑屏干等。
    用法：<script src="rt-player.js"></script><script src="rt-history.js"></script> */
 (function () {
   const RT = window.RT; if (!RT || RT._hist) return; RT._hist = 1;
@@ -27,6 +30,11 @@
 #rhSub .zh{font-size:14px;opacity:.92;margin-top:2px}
 #rhPause{position:absolute;inset:0;z-index:2;display:grid;place-items:center;pointer-events:none}
 #rhPause[hidden]{display:none}
+#rhLoad{position:absolute;inset:0;z-index:2;display:grid;place-items:center;pointer-events:none;font:13px -apple-system,system-ui,sans-serif;color:#ddd}
+#rhLoad[hidden]{display:none}
+#rhLoad div{display:flex;flex-direction:column;align-items:center;gap:10px}
+#rhLoad i{width:28px;height:28px;border-radius:50%;border:2.5px solid rgba(255,255,255,.25);border-top-color:#fff;animation:rhSpin .9s linear infinite}
+@keyframes rhSpin{to{transform:rotate(360deg)}}
 #rhPause div{width:62px;height:62px;border-radius:50%;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.25);display:grid;place-items:center;color:#fff;font-size:22px}`;
   let zh = () => /^zh/i.test(navigator.language || ''), stage = null, bar = null, view = null, rev = null;
   const T = (en, z) => zh() ? z : en;
@@ -65,11 +73,30 @@
   const ob = RT.begin, op = RT.part, od = RT.done, oc = RT.clear, oi = RT.init;
   RT.begin = function (o) { try { onBegin(o); } catch (err) {} return ob.apply(RT, arguments); };
   RT.part = function (i) { try { curI = i; capture(find(curKey), curParts); } catch (err) {} return op.apply(RT, arguments); };
-  RT.done = function (k) { try { const e = find(k || curKey); if (e) { capture(e, curParts); e.done = true; e.live = false; } } catch (err) {} return od.apply(RT, arguments); };
+  RT.done = function (k) { try { const e = find(k || curKey); if (e) { capture(e, curParts); e.done = true; e.live = false; if (e.key !== 'OPEN') setTimeout(() => e.urls.filter(Boolean).forEach(keepOf), 1500); } } catch (err) {} return od.apply(RT, arguments); };
   RT.clear = function () { try { const e = find(curKey); if (e) { capture(e, curParts); e.live = false; } curKey = null; curParts = null; } catch (err) {} return oc.apply(RT, arguments); };
   let drama = null;
   RT.init = function (o) { const r = oi.apply(RT, arguments); try { if (o && o.zh) zh = o.zh; if (o && o.drama && o.drama !== drama) { drama = o.drama; H.length = 0; curKey = null; } closeReview(false); mount(document.querySelector((o && o.stage) || '#stage')); } catch (err) {} return r; };   // 换了一部剧（APP 里）就清空历史
   RT.history = () => H.map(e => ({ key: e.key, label: e.label, her: e.her, urls: e.urls.slice() }));
+  // ---------- 留存（V2）：播完的幕在空档里下完，回看直接用 ----------
+  const KEEP = /iPhone|iPad|Android/i.test(navigator.userAgent) ? 3 : 5, K = new Map();   // url → 不进画面的 video
+  const full = v => v && v.duration > 0 && v.buffered.length && v.buffered.end(v.buffered.length - 1) >= v.duration - 0.3;
+  function keepOf(u) {
+    let v = K.get(u); if (v) return v;
+    v = document.createElement('video'); v.muted = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto'; v.src = u; v._kept = 1; K.set(u, v);
+    const urls = [...new Set(H.filter(e => e.done && e.key !== 'OPEN').slice(-KEEP).flatMap(e => e.urls.filter(Boolean)))];   // 只留最近 KEEP 幕
+    [...K.keys()].forEach(x => { if (!urls.includes(x) && x !== u && !(rev && rev.parts.some(p => p.v === K.get(x)))) { const o = K.get(x); o.pause(); o.removeAttribute('src'); o.load(); K.delete(x); } });
+    return v;
+  }
+  const liveBusy = () => [...document.querySelectorAll('video')].some(v => !v._kept && !(view && view.contains(v)) && v.currentSrc && !v.loop && !/OPEN|IDLE/.test(v.currentSrc) && v.readyState >= 1 && !full(v) && v.networkState === 2);
+  function tend() {   // 每秒：没有直播段在下载时，让没下完的留存播放器静音慢放（浏览器才会一直下到结尾）；直播段在下载时让路
+    const busy = liveBusy();
+    K.forEach(v => { if (view && view.contains(v)) return;
+      if (full(v) || busy) { if (!v.paused) v.pause(); return; }
+      if (v.paused && v.readyState >= 1) { try { v.playbackRate = 0.0625; } catch (e) {} v.play().catch(() => {}); } });
+  }
+  setInterval(tend, 1000);
+
 
   function mount(st) {
     if (!st) return; stage = st;
@@ -117,8 +144,11 @@
     view.innerHTML = '<div id="rhTop"><span></span><button type="button"></button></div><div id="rhSub"></div><div id="rhPause" hidden><div>▶</div></div>';
     view.querySelector('#rhTop span').textContent = e.label + (e.her ? ' · ' + T('You: ', '你：') + e.her : '');
     view.querySelector('#rhTop button').textContent = T('Back to now ✕', '回到现在 ✕');
+    view.insertAdjacentHTML('beforeend', '<div id="rhLoad" hidden><div><i></i><span></span></div></div>');
     const parts = e.urls.filter(Boolean).map((u, k) => {
-      const v = document.createElement('video'); v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); v.preload = 'auto'; v.src = u;
+      const v = e.key === 'OPEN' ? document.createElement('video') : keepOf(u);   // V2：用留存播放器（多半已经下完）
+      if (!v._kept) { v.preload = 'auto'; v.src = u; }
+      v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); v.pause(); try { v.playbackRate = 1; } catch (err) {}
       view.insertBefore(v, view.firstChild); if (e.flips[k] && RT.flip) RT.flip(v, e.flips[k]); return { v, d: e.durs[k] };
     });
     stage.appendChild(view); stage.appendChild(bar);   // 进度条留在回看画面上面
@@ -133,8 +163,22 @@
       v.ontimeupdate = () => { const d = v.duration || parts[k].d || 1, t = v.currentTime;
         const c = cs.find(q => q.rel ? t >= q.rel[0] * d && t < q.rel[1] * d : t >= q.s && t <= q.e); showSub(c || null); };
       v.onended = () => { v.ontimeupdate = null; showSub(null); play(k + 1); };
-      v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
-      if (parts[k + 1]) parts[k + 1].v.load();
+      const load = view.querySelector('#rhLoad'), lab = load.querySelector('span');
+      const ahead = () => { const b = v.buffered; for (let j = 0; j < b.length; j++) if (b.start(j) <= v.currentTime + 0.2 && b.end(j) > v.currentTime) return b.end(j) - v.currentTime; return 0; };
+      let warming = false;
+      const go = () => { load.hidden = true; if (warming) { warming = false; v.pause(); v.currentTime = 0; } try { v.playbackRate = 1; } catch (err) {} v.muted = false;
+        v.play().catch(() => { v.muted = true; v.play().catch(() => {}); }); };
+      const ok = () => full(v) || ahead() >= Math.min(8, (v.duration || 15) - v.currentTime - 0.2);
+      if (ok()) go();
+      else { load.hidden = false; const t0 = Date.now();
+        const tick = () => { if (!rev || rev.parts[k].v !== v || rev.i !== k) return;
+          const d = v.duration || parts[k].d || 15; lab.textContent = T('Loading ', '加载中 ') + Math.min(99, Math.round(ahead() / d * 100)) + '%';
+          if (ok() || Date.now() - t0 > 45000) { go(); return; }
+          if (v.paused && v.readyState >= 1) { warming = true; v.muted = true; try { v.playbackRate = 0.0625; } catch (err) {} v.play().catch(() => {}); }   // 暂停的视频浏览器只缓冲一小段：静音慢放让它一直下
+          setTimeout(tick, 400); };
+        tick(); }
+      v.onwaiting = () => { if (rev && rev.parts[k].v === v) { load.hidden = false; lab.textContent = T('Loading…', '加载中…'); } };
+      v.onplaying = () => { load.hidden = true; };
     };
     view.querySelector('#rhTop button').onclick = ev => { ev.stopPropagation(); closeReview(true); };
     view.addEventListener('click', ev => { ev.stopPropagation(); if (ev.target.closest('#rhTop')) return; const v = parts[rev.i].v; if (v.paused) { v.play().catch(() => {}); pauseEl.hidden = true; } else { v.pause(); pauseEl.hidden = false; } });
@@ -143,7 +187,7 @@
   }
   function closeReview(resume) {
     if (!view) return;
-    const r = rev; view.querySelectorAll('video').forEach(v => { v.ontimeupdate = v.onended = null; v.pause(); v.removeAttribute('src'); v.load(); });
+    const r = rev; view.querySelectorAll('video').forEach(v => { v.ontimeupdate = v.onended = v.onwaiting = v.onplaying = null; v.pause(); if (v._kept) { v.muted = true; v.classList.remove('on'); v.remove(); return; } v.removeAttribute('src'); v.load(); });   // 留存播放器拿出来留着，下次回看还用
     view.remove(); view = null; rev = null; was = ''; paint();
     if (resume && r) r.held.forEach(m => { if (m.isConnected) m.play().catch(() => {}); });
   }
