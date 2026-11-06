@@ -147,6 +147,7 @@ body.lang-en .zh{display:none!important}
   <div id="toast" hidden></div>
 </div>
 <script src="rt-player.js?v=2"></script>
+<script src="rt-history.js?v=1dd85f11"></script>
 <script>
 (() => {
 const $ = id => document.getElementById(id);
@@ -201,7 +202,7 @@ $('startBtn').onclick = async () => {
 };
 let replayFn = null;
 function playOpening(){
-  RT.begin({key: 'OPEN', parts: [{v: ov}]}); replayFn = playOpening;
+  RT.begin({hist: {cues: (typeof OPEN_CUES !== 'undefined' ? OPEN_CUES : null)}, key: 'OPEN', parts: [{v: ov}]}); replayFn = playOpening;
   showSub(null); ov.currentTime = 0; ov.muted = false; ov.loop = false;
   ov.play().then(() => show(ov)).catch(() => { show(ov); toast('点一下画面开始'); });
   ov.ontimeupdate = () => { const t = ov.currentTime; const c = OPEN_CUES.find(q => t >= q.s && t <= q.e); showSub(c || null, c && c.who); };
@@ -260,7 +261,7 @@ async function liveRound(kind, choice, said){
   const view = {};
   if (!segErr() && r.status !== 'error'){
     $('liveWait').hidden = true; waitMusic(false); setMode('playing');
-    RT.begin({key: 'round:' + rid, parts: r.segs.map((x, i) => ({v: V[i], d: x.dur || x.seconds})), label: lang === 'zh' ? `第 ${round + 1} 幕` : `Scene ${round + 1}`}); RT.part(0); view.play_at = Date.now(); view.seg2_eta = r.segs[1] ? r.segs[1].eta_left : null;
+    RT.begin({hist: {r: r, her: (typeof herLine !== 'undefined' ? herLine : (typeof said !== 'undefined' && said ? (said.zh || said.en || '') : ''))}, key: 'round:' + rid, parts: r.segs.map((x, i) => ({v: V[i], d: x.dur || x.seconds})), label: lang === 'zh' ? `第 ${round + 1} 幕` : `Scene ${round + 1}`}); RT.part(0); view.play_at = Date.now(); view.seg2_eta = r.segs[1] ? r.segs[1].eta_left : null;
     await play(0); view.seg1_end = Date.now();
     if (r.segs.length > 1){
       const ok2 = () => segErr() || (r.segs[1].url && V[1].dataset.src === r.segs[1].url && V[1].readyState >= 3);  // 配音不挡接缝（开播前已经等过）
@@ -277,7 +278,7 @@ async function liveRound(kind, choice, said){
   if (!view.play_at || segErr()){ const low = (r.segs || []).some(s => s.err_code === 10005); setChip(low ? '<b>Vivix 余额不足</b> · 这一轮没有生成（10005）。给 Vivix 工作区充值后，直接在这里重新点选项或发送即可' : `<b>这一轮失败</b> · ${esc((r.segs || []).map(s => s.err).filter(Boolean)[0] || r.err || '')} · 可以再选一次`); if (low) toast('Vivix 余额不足'); openChoice(); return; }
   setChip(`<b>第 ${round + 1} 幕</b> · ${esc(r.mode)} · 发送到开播 ${((view.play_at - t0) / 1000).toFixed(1)}s（导演层 ${dir == null ? '—' : dir.toFixed(1)}s${r.director === 'prefetched' ? ' 预写' : ''} ＋ 第 1 段 ${r.segs[0].ready_at ? ((r.segs[0].ready_at - r.director_at) / 1000).toFixed(1) : '—'}s，第 2 段 ${gen == null ? '—' : gen.toFixed(1)}s）· 两段接缝停顿 ${(view.stall || 0).toFixed(1)}s`);
   const sceneNo = round + 1;
-  replayFn = async () => { RT.begin({key: 'round:' + rid, free: true, parts: r.segs.map((x, i) => ({v: V[i], d: x.dur || x.seconds})), label: lang === 'zh' ? `第 ${sceneNo} 幕` : `Scene ${sceneNo}`}); RT.part(0); await play(0); if (r.segs.length > 1){ RT.part(1); await play(1); } RT.clear(); openChoice(); };
+  replayFn = async () => { RT.begin({hist: {r: r, her: (typeof herLine !== 'undefined' ? herLine : (typeof said !== 'undefined' && said ? (said.zh || said.en || '') : ''))}, key: 'round:' + rid, free: true, parts: r.segs.map((x, i) => ({v: V[i], d: x.dur || x.seconds})), label: lang === 'zh' ? `第 ${sceneNo} 幕` : `Scene ${sceneNo}`}); RT.part(0); await play(0); if (r.segs.length > 1){ RT.part(1); await play(1); } RT.clear(); openChoice(); };
   round++; next = r.next || next; openChoice();
 
   function play(i){ return new Promise(res => {
