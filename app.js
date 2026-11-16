@@ -46,7 +46,7 @@ function startWaiting(){
 
 // video
 // 视频按需加载：当前镜头优先，后面的镜头排队，一次只预取一段，避免线上带宽被同时摊薄。
-const srcOf=v=>v.dataset.src;
+const srcOf=v=>v.dataset.src+"?quality=master-20261115";
 function startLoad(v){if(!v.getAttribute('src')){v.preload='auto';v.src=srcOf(v);v.load();}}
 const bufferedTo=v=>v.buffered.length?v.buffered.end(v.buffered.length-1):0;
 const loaded=v=>!!v.getAttribute('src')&&(v.readyState>=4&&bufferedTo(v)>=(v.duration||Infinity)-.3);
