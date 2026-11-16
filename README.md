@@ -16,3 +16,7 @@
 
 <img src="docs/preview/gallery.jpg" width="720" alt="关键画面">
 
+
+## Playback quality
+
+Videos are byte-identical copies of the final production masters. No publishing-time scaling, recompression, or bandwidth-based quality downgrade. See `original-media.json` for file sizes and SHA-256 checksums.
